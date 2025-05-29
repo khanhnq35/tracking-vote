@@ -320,7 +320,6 @@ def logout():
 
 # Định nghĩa route cho trang chủ
 @app.route('/')
-@login_required # Yêu cầu đăng nhập để truy cập trang chủ
 def index():
     # Truyền trạng thái đăng nhập ra frontend
     return render_template('index.html', is_authenticated=current_user.is_authenticated)
