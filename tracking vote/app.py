@@ -248,10 +248,10 @@ def get_history():
         
         # Giới hạn bản ghi nếu user chưa đăng nhập
         if not current_user.is_authenticated:
-             # Lấy 50 timestamp gần nhất trong khoảng thời gian đã chọn
-             recent_timestamps = session.query(VoteRecord.timestamp).filter(VoteRecord.timestamp >= time_threshold).order_by(desc(VoteRecord.timestamp)).distinct().limit(50).subquery()
+             # Lấy 10 timestamp gần nhất trong khoảng thời gian đã chọn
+             recent_timestamps = session.query(VoteRecord.timestamp).filter(VoteRecord.timestamp >= time_threshold).order_by(desc(VoteRecord.timestamp)).distinct().limit(10).subquery()
              query = query.filter(VoteRecord.timestamp.in_(recent_timestamps))
-             logger.info("User not authenticated, limiting history to 50 recent timestamps.")
+             logger.info("User not authenticated, limiting history to 10 recent timestamps.")
         else:
              logger.info("User authenticated, providing full history.")
              
