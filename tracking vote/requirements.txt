@@ -6,3 +6,5 @@ APScheduler==3.8.1
 tenacity==8.0.1
 gunicorn
 pytz
+psycopg2-binary
+SQLAlchemy
