@@ -46,8 +46,10 @@
             <div class="col-md-3">
                 <label for="intervalSelect" class="form-label">Khoảng thời gian</label>
                 <select id="intervalSelect" class="form-select">
+                    {% if is_authenticated %}
                     <option value="10m">10 phút</option>
                     <option value="1h">1 giờ</option>
+                    {% endif %}
                     <option value="5h">5 giờ</option>
                     <option value="1d" selected>1 ngày</option>
                     <option value="3d">3 ngày</option>
