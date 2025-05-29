@@ -7,6 +7,7 @@ from datetime import datetime
 import logging
 from tenacity import retry, stop_after_attempt, wait_exponential
 import os
+import pytz
 
 # Cấu hình logging
 logging.basicConfig(
@@ -71,7 +72,8 @@ def fetch_vote_data():
         print(f"Lỗi: {e}")
 
 # Khởi tạo scheduler
-scheduler = BackgroundScheduler()
+# Sử dụng timezone từ pytz, ví dụ múi giờ Việt Nam (Asia/Ho_Chi_Minh)
+scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Ho_Chi_Minh'))
 scheduler.add_job(func=fetch_vote_data, trigger="interval", minutes=10)
 scheduler.start()
 
