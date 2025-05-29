@@ -25,6 +25,13 @@
     </style>
 </head>
 <body>
+    <div class="container-fluid p-3 position-absolute top-0 end-0">
+        {% if is_authenticated %}
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary">Đăng xuất</a>
+        {% else %}
+            <a href="{{ url_for('login') }}" class="btn btn-primary">Đăng nhập</a>
+        {% endif %}
+    </div>
     <div class="container py-5">
         <h1 class="text-center mb-4">Theo dõi Vote YVote</h1>
         <div class="text-center mb-4">
