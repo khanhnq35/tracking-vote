@@ -9,3 +9,4 @@ pytz
 psycopg2-binary
 SQLAlchemy
 Flask-Login
+Werkzeug 
