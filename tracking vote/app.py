@@ -55,6 +55,20 @@ class VoteRecord(Base):
     def __repr__(self):
         return f"<VoteRecord(timestamp='{self.timestamp}', name='{self.candidate_name}', percent={self.percent})>"
 
+# Định nghĩa Model User cho xác thực
+class User(UserMixin, Base):
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
 # Tạo bảng trong database nếu chưa tồn tại
 Base.metadata.create_all(engine)
 
@@ -68,21 +82,50 @@ login_manager.login_view = 'login' # Set the view function for the login page
 login_manager.login_message_category = 'info'
 login_manager.login_message = 'Vui lòng đăng nhập để truy cập đầy đủ lịch sử.'
 
-# Simple User class for Flask-Login (in-memory for this example)
-# In a real app, you would have a users table in your database
-class User(UserMixin):
-    def __init__(self, id):
-        self.id = id
+# Thêm user mặc định nếu chưa tồn tại
+def create_default_users():
+    session = Session()
+    try:
+        users_to_create = [
+            ('joeyadmin230705', '12345678'),
+            ('p27nadmin121205', '12345678'),
+            ('bevistdatadmin021006', '12345678')
+        ]
+
+        for username, password in users_to_create:
+            existing_user = session.query(User).filter_by(username=username).first()
+            if not existing_user:
+                new_user = User(username=username)
+                new_user.set_password(password)
+                session.add(new_user)
+                logger.info(f"Đã tạo người dùng: {username}")
+
+        session.commit()
+    except Exception as e:
+        logger.error(f"Lỗi khi tạo người dùng mặc định: {e}")
+        session.rollback()
+    finally:
+        session.close()
+
+# Gọi hàm tạo user khi khởi động ứng dụng
+create_default_users()
 
 # User loader function required by Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
-    # In a real app, load user from DB based on user_id
-    # For this example, a simple hardcoded user
-    if user_id == 'admin': # Example user ID
-        # You could store hashed password here too
-        return User('admin')
-    return None
+    # Load user from DB based on user_id
+    session = Session()
+    try:
+        # user_id ở đây là id (primary key), không phải username
+        # Flask-Login lưu trữ user.get_id() là string
+        # Cần chuyển về int nếu id là int
+        user = session.query(User).get(int(user_id))
+        return user
+    except Exception as e:
+        logger.error(f"Lỗi khi tải người dùng với id {user_id}: {e}")
+        return None
+    finally:
+        session.close()
 
 # Hàm fetch data và lưu vào DB
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
@@ -176,6 +219,7 @@ def get_vote_data():
 
 # API trả về lịch sử
 @app.route('/api/history')
+@login_required # Yêu cầu đăng nhập để truy cập
 def get_history():
     session = Session()
     try:
@@ -247,36 +291,36 @@ def get_history():
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index')) # Redirect nếu đã đăng nhập
-        
+
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        # Kiểm tra username và password mẫu
-        if username == 'admin' and password == 'password': # Thay bằng kiểm tra trong DB thực tế
-            user = User('admin')
-            login_user(user)
-            logger.info(f"User {username} logged in successfully.")
-            # Redirect về trang chủ sau khi đăng nhập thành công
-            return redirect(url_for('index'))
-        else:
-            # Xử lý đăng nhập thất bại
-            logger.warning(f"Login failed for user {username}.")
-            # Bạn có thể flash message lỗi ra giao diện
-            pass # Hiện tại không làm gì, giao diện sẽ cần hiển thị lỗi
+        session = Session()
+        user = session.query(User).filter_by(username=username).first()
+        session.close()
 
-    # Render trang login (sẽ cần tạo template login.html)
-    return "<form method=\"post\"><input type=\"text\" name=\"username\" placeholder=\"Username\"><input type=\"password\" name=\"password\" placeholder=\"Password\"><button type=\"submit\">Login</button></form><p>Username: admin, Password: password (mẫu)</p>" # Sử dụng HTML thô tạm thời
+        if user and user.check_password(password):
+            login_user(user) # Đăng nhập người dùng
+            # Có thể thêm flash message thông báo đăng nhập thành công
+            return redirect(url_for('index')) # Chuyển hướng đến trang chính sau khi đăng nhập
+        else:
+            # Có thể thêm flash message thông báo đăng nhập thất bại
+            pass # Xử lý đăng nhập thất bại (ví dụ: hiển thị lại form với thông báo lỗi)
+
+    # Render form đăng nhập (sẽ cần tạo file templates/login.html)
+    return render_template('login.html')
 
 # Route đăng xuất
 @app.route('/logout')
 @login_required # Yêu cầu đăng nhập mới được truy cập
 def logout():
-    logout_user()
-    logger.info("User logged out.")
-    return redirect(url_for('index')) # Redirect về trang chủ sau khi đăng xuất
+    logout_user() # Đăng xuất người dùng
+    # Có thể thêm flash message thông báo đăng xuất thành công
+    return redirect(url_for('index')) # Chuyển hướng đến trang chính
 
 # Định nghĩa route cho trang chủ
 @app.route('/')
+@login_required # Yêu cầu đăng nhập để truy cập trang chủ
 def index():
     # Truyền trạng thái đăng nhập ra frontend
     return render_template('index.html', is_authenticated=current_user.is_authenticated)
