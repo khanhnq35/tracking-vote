@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect, url_for
 import requests
 from bs4 import BeautifulSoup
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -12,6 +12,8 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import desc
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Cấu hình logging
 logging.basicConfig(
@@ -25,13 +27,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_secret_key') # Lấy Secret Key từ biến môi trường hoặc dùng default
 
 # Cấu hình Database
 DATABASE_URL = os.environ.get('DATABASE_URL') # Lấy từ biến môi trường
 if not DATABASE_URL:
     logger.error("DATABASE_URL is not set.")
-    # Bạn có thể thêm xử lý lỗi hoặc giá trị mặc định tại đây nếu cần cho local dev
-    # Ví dụ: DATABASE_URL = 'sqlite:///local_history.db' # SQLite cho local testing
+    # Fallback cho local testing với SQLite nếu DATABASE_URL không có
+    # DATABASE_URL = 'sqlite:///local_history.db'
+    # engine = create_engine(DATABASE_URL)
+    # Base.metadata.create_all(engine)
+    # print("WARNING: Using SQLite for local development. Set DATABASE_URL for production.")
+    raise ValueError("DATABASE_URL environment variable not set.")
 
 engine = create_engine(DATABASE_URL)
 Base = declarative_base()
@@ -54,11 +61,28 @@ Base.metadata.create_all(engine)
 # Tạo Session maker
 Session = sessionmaker(bind=engine)
 
-# Biến lưu trữ dữ liệu vote (sẽ lấy từ DB cho lần request đầu)
-vote_data = {
-    'last_update': None,
-    'candidates': []
-}
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login' # Set the view function for the login page
+login_manager.login_message_category = 'info'
+login_manager.login_message = 'Vui lòng đăng nhập để truy cập đầy đủ lịch sử.'
+
+# Simple User class for Flask-Login (in-memory for this example)
+# In a real app, you would have a users table in your database
+class User(UserMixin):
+    def __init__(self, id):
+        self.id = id
+
+# User loader function required by Flask-Login
+@login_manager.user_loader
+def load_user(user_id):
+    # In a real app, load user from DB based on user_id
+    # For this example, a simple hardcoded user
+    if user_id == 'admin': # Example user ID
+        # You could store hashed password here too
+        return User('admin')
+    return None
 
 # Hàm fetch data và lưu vào DB
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
@@ -107,10 +131,6 @@ def fetch_vote_data():
         else:
              logger.warning("API returned no data or failed to parse.")
 
-        # Cập nhật vote_data với dữ liệu mới nhất fetch được (tùy chọn, có thể bỏ qua nếu luôn đọc từ DB)
-        # vote_data['last_update'] = current_time.strftime("%Y-%m-%d %H:%M:%S")
-        # vote_data['candidates'] = candidates
-
     except requests.RequestException as e:
         logger.error(f"Lỗi kết nối hoặc HTTP khi fetch data: {e}")
         session.rollback() # Rollback nếu có lỗi
@@ -137,6 +157,7 @@ def get_vote_data():
         if not latest_timestamp_query:
              return jsonify({'last_update': None, 'candidates': []})
              
+        # Lấy tất cả bản ghi tại timestamp mới nhất
         latest_records = session.query(VoteRecord).filter_by(timestamp=latest_timestamp_query).all()
 
         candidates = [{
@@ -178,8 +199,20 @@ def get_history():
         if candidates_filter:
             query = query.filter(VoteRecord.candidate_name.in_(candidates_filter))
             
-        # Sắp xếp theo timestamp và candidate_name để dễ xử lý
-        records = query.order_by(VoteRecord.timestamp, VoteRecord.candidate_name).all()
+        # Sắp xếp theo timestamp giảm dần
+        query = query.order_by(desc(VoteRecord.timestamp))
+        
+        # Giới hạn bản ghi nếu user chưa đăng nhập
+        if not current_user.is_authenticated:
+             # Lấy 50 timestamp gần nhất trong khoảng thời gian đã chọn
+             recent_timestamps = session.query(VoteRecord.timestamp).filter(VoteRecord.timestamp >= time_threshold).order_by(desc(VoteRecord.timestamp)).distinct().limit(50).subquery()
+             query = query.filter(VoteRecord.timestamp.in_(recent_timestamps))
+             logger.info("User not authenticated, limiting history to 50 recent timestamps.")
+        else:
+             logger.info("User authenticated, providing full history.")
+             
+        # Lấy bản ghi
+        records = query.order_by(desc(VoteRecord.timestamp), VoteRecord.candidate_name).all()
         
         # Gom nhóm bản ghi theo timestamp
         history_dict = {}
@@ -192,15 +225,15 @@ def get_history():
                 'percent': record.percent
             })
             
-        # Chuyển dictionary thành list và sắp xếp theo timestamp giảm dần
+        # Chuyển dictionary thành list và giữ nguyên thứ tự đã sắp xếp
         filtered_history = []
-        for ts_str, candidates in history_dict.items():
-            filtered_history.append({
-                'timestamp': ts_str,
-                'candidates': candidates
-            })
-            
-        filtered_history.sort(key=lambda x: x['timestamp'], reverse=True)
+        # Lấy các timestamp duy nhất đã lọc và sắp xếp để duy trì thứ tự
+        ordered_timestamps = sorted(history_dict.keys(), reverse=True)
+        for ts_str in ordered_timestamps:
+             filtered_history.append({
+                 'timestamp': ts_str,
+                 'candidates': history_dict[ts_str]
+             })
 
         return jsonify(filtered_history)
     except Exception as e:
@@ -209,10 +242,44 @@ def get_history():
     finally:
         session.close()
 
+# Route cho trang đăng nhập
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index')) # Redirect nếu đã đăng nhập
+        
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        # Kiểm tra username và password mẫu
+        if username == 'admin' and password == 'password': # Thay bằng kiểm tra trong DB thực tế
+            user = User('admin')
+            login_user(user)
+            logger.info(f"User {username} logged in successfully.")
+            # Redirect về trang chủ sau khi đăng nhập thành công
+            return redirect(url_for('index'))
+        else:
+            # Xử lý đăng nhập thất bại
+            logger.warning(f"Login failed for user {username}.")
+            # Bạn có thể flash message lỗi ra giao diện
+            pass # Hiện tại không làm gì, giao diện sẽ cần hiển thị lỗi
+
+    # Render trang login (sẽ cần tạo template login.html)
+    return "<form method=\"post\"><input type=\"text\" name=\"username\" placeholder=\"Username\"><input type=\"password\" name=\"password\" placeholder=\"Password\"><button type=\"submit\">Login</button></form><p>Username: admin, Password: password (mẫu)</p>" # Sử dụng HTML thô tạm thời
+
+# Route đăng xuất
+@app.route('/logout')
+@login_required # Yêu cầu đăng nhập mới được truy cập
+def logout():
+    logout_user()
+    logger.info("User logged out.")
+    return redirect(url_for('index')) # Redirect về trang chủ sau khi đăng xuất
+
 # Định nghĩa route cho trang chủ
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Truyền trạng thái đăng nhập ra frontend
+    return render_template('index.html', is_authenticated=current_user.is_authenticated)
 
 # Khởi tạo scheduler
 # Sử dụng timezone từ pytz, ví dụ múi giờ Việt Nam (Asia/Ho_Chi_Minh)
@@ -221,14 +288,15 @@ scheduler.add_job(func=fetch_vote_data, trigger="interval", minutes=10)
 scheduler.start()
 
 # Fetch data lần đầu khi ứng dụng được import (để có dữ liệu ngay từ đầu)
-fetch_vote_data()
+# fetch_vote_data() # Tạm thời bỏ comment này để tránh lỗi khi database chưa sẵn sàng trong quá trình deploy
 
 if __name__ == '__main__':
-    # Khi chạy local, có thể chạy app.run() ở đây
-    # Khi deploy với Gunicorn, khối này sẽ không chạy
     try:
-        # app.run(debug=True)
-        # logger.info("Flask app is running locally...")
-        pass # Gunicorn sẽ start app
+        # Khi chạy local, có thể chạy app.run() ở đây
+        # Khi deploy với Gunicorn, khối này sẽ không chạy
+        # Ensure tables are created before running locally
+        Base.metadata.create_all(engine) # Tạo bảng nếu chạy local
+        app.run(debug=True)
+        logger.info("Flask app is running locally...")
     except Exception as e:
         logger.error(f"Lỗi khởi động ứng dụng (trong __main__): {str(e)}") 
