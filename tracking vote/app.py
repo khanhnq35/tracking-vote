@@ -209,6 +209,10 @@ def get_history():
     finally:
         session.close()
 
+# Định nghĩa route cho trang chủ
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 # Khởi tạo scheduler
 # Sử dụng timezone từ pytz, ví dụ múi giờ Việt Nam (Asia/Ho_Chi_Minh)
@@ -217,7 +221,7 @@ scheduler.add_job(func=fetch_vote_data, trigger="interval", minutes=10)
 scheduler.start()
 
 # Fetch data lần đầu khi ứng dụng được import (để có dữ liệu ngay từ đầu)
-fetch_vote_data() # Gọi ở đây thay vì trong if __name__ == '__main__':
+fetch_vote_data()
 
 if __name__ == '__main__':
     # Khi chạy local, có thể chạy app.run() ở đây
