@@ -225,6 +225,7 @@ def get_history():
     try:
         interval = request.args.get('interval', '1d')
         candidates_filter = request.args.getlist('candidates')
+        limit = request.args.get('limit', type=int) # Lấy tham số limit, ép kiểu sang int
 
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
         interval_map = {
@@ -252,6 +253,11 @@ def get_history():
              recent_timestamps = session.query(VoteRecord.timestamp).filter(VoteRecord.timestamp >= time_threshold).order_by(desc(VoteRecord.timestamp)).distinct().limit(10).subquery()
              query = query.filter(VoteRecord.timestamp.in_(recent_timestamps))
              logger.info("User not authenticated, limiting history to 10 recent timestamps.")
+        elif limit is not None: # Áp dụng giới hạn nếu user đã đăng nhập và limit được cung cấp
+            # Lấy các timestamp duy nhất giới hạn bởi limit
+            recent_timestamps = session.query(VoteRecord.timestamp).filter(VoteRecord.timestamp >= time_threshold).order_by(desc(VoteRecord.timestamp)).distinct().limit(limit).subquery()
+            query = query.filter(VoteRecord.timestamp.in_(recent_timestamps))
+            logger.info(f"User authenticated, limiting history to {limit} recent timestamps.")
         else:
              logger.info("User authenticated, providing full history.")
              
