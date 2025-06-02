@@ -51,9 +51,10 @@ class VoteRecord(Base):
     timestamp = Column(DateTime, index=True)
     candidate_name = Column(String, index=True)
     percent = Column(Float)
+    board = Column(String, index=True)  # Thêm trường board để phân biệt bảng
 
     def __repr__(self):
-        return f"<VoteRecord(timestamp='{self.timestamp}', name='{self.candidate_name}', percent={self.percent})>"
+        return f"<VoteRecord(timestamp='{self.timestamp}', name='{self.candidate_name}', percent={self.percent}, board='{self.board}')>"
 
 # Định nghĩa Model User cho xác thực
 class User(UserMixin, Base):
@@ -130,90 +131,79 @@ def load_user(user_id):
 # Hàm fetch data và lưu vào DB
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def fetch_vote_data():
-    logger.info("Bắt đầu fetch dữ liệu từ yvoting-service API")
+    logger.info("Bắt đầu fetch dữ liệu từ yvoting-service API (3 bảng)")
     session = Session()
     try:
-        url = "https://yvoting-service.onfan.vn/api/v1/nominations?awardId=49afae89-7cba-481b-9049-28d76f4a2ea8"
+        boards = [
+            ("A", "https://yvoting-service.onfan.vn/api/v1/nominations?awardId=a825cb3e-0ef5-4ad5-b4cf-2cb662066701"),
+            ("B", "https://yvoting-service.onfan.vn/api/v1/nominations?awardId=5de87df4-221b-4a99-9f4b-d4b3cc48f2e5"),
+            ("C", "https://yvoting-service.onfan.vn/api/v1/nominations?awardId=08b7d1e0-665f-4452-8460-5a101e61f87a")
+        ]
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        response = requests.get(url, headers=headers, timeout=20) # Tăng timeout
-        response.raise_for_status()
-
-        data = response.json()
         current_time = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
-
-        candidates = []
         new_vote_records = []
-        for item in data.get("data", []):
+        for board_name, url in boards:
             try:
-                name = item["character"]["name"]
-                percent = round(item["ratioVotes"], 2)
-                candidates.append({
-                    "name": name,
-                    "percent": percent
-                })
-                # Tạo bản ghi mới để lưu vào DB
-                new_vote_records.append(VoteRecord(
-                    timestamp=current_time,
-                    candidate_name=name,
-                    percent=percent
-                ))
-            except KeyError as e:
-                logger.error(f"Missing key in API response item: {e}. Item: {item}")
-                continue # Bỏ qua item bị thiếu key
+                response = requests.get(url, headers=headers, timeout=20)
+                response.raise_for_status()
+                data = response.json()
+                for item in data.get("data", []):
+                    try:
+                        name = item["character"]["name"]
+                        percent = round(item["ratioVotes"], 2)
+                        new_vote_records.append(VoteRecord(
+                            timestamp=current_time,
+                            candidate_name=name,
+                            percent=percent,
+                            board=board_name
+                        ))
+                    except KeyError as e:
+                        logger.error(f"Missing key in API response item: {e}. Item: {item}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Lỗi khi xử lý item từ API: {e}. Item: {item}")
+                        continue
             except Exception as e:
-                logger.error(f"Lỗi khi xử lý item từ API: {e}. Item: {item}")
-                continue # Bỏ qua item bị lỗi
-
-        # Thêm các bản ghi mới vào session và commit vào DB
+                logger.error(f"Lỗi khi fetch dữ liệu bảng {board_name}: {e}")
+                continue
         if new_vote_records:
             session.add_all(new_vote_records)
             session.commit()
             logger.info(f"Đã lưu {len(new_vote_records)} bản ghi vote mới vào database tại {current_time}")
         else:
-             logger.warning("API returned no data or failed to parse.")
-
-    except requests.RequestException as e:
-        logger.error(f"Lỗi kết nối hoặc HTTP khi fetch data: {e}")
-        session.rollback() # Rollback nếu có lỗi
-        raise
-    except json.JSONDecodeError as e:
-         logger.error(f"Lỗi parse JSON từ API: {e}")
-         session.rollback() # Rollback nếu có lỗi
-         raise
+            logger.warning("API returned no data or failed to parse.")
     except Exception as e:
         logger.error(f"Lỗi không xác định khi fetch data: {e}")
-        session.rollback() # Rollback nếu có lỗi
+        session.rollback()
         raise
     finally:
-        session.close() # Luôn đóng session
+        session.close()
 
 # API trả về dữ liệu vote hiện tại
 @app.route('/api/vote-data')
 def get_vote_data():
     session = Session()
     try:
-        # Lấy dữ liệu mới nhất cho mỗi ứng viên từ DB
-        latest_timestamp_query = session.query(VoteRecord.timestamp).order_by(desc(VoteRecord.timestamp)).limit(1).scalar()
-        
-        if not latest_timestamp_query:
-             return jsonify({'last_update': None, 'candidates': []})
-             
-        # Lấy tất cả bản ghi tại timestamp mới nhất
-        latest_records = session.query(VoteRecord).filter_by(timestamp=latest_timestamp_query).all()
-
-        candidates = [{
-            'name': record.candidate_name,
-            'percent': record.percent
-        } for record in latest_records]
-        
-        last_update_str = latest_timestamp_query.strftime("%Y-%m-%d %H:%M:%S")
-
-        return jsonify({'last_update': last_update_str, 'candidates': candidates})
+        boards = ["A", "B", "C"]
+        result = {}
+        for board in boards:
+            latest_timestamp = session.query(VoteRecord.timestamp).filter_by(board=board).order_by(desc(VoteRecord.timestamp)).limit(1).scalar()
+            if not latest_timestamp:
+                result[board] = {'last_update': None, 'candidates': []}
+                continue
+            latest_records = session.query(VoteRecord).filter_by(timestamp=latest_timestamp, board=board).all()
+            candidates = [{
+                'name': record.candidate_name,
+                'percent': record.percent
+            } for record in latest_records]
+            last_update_str = latest_timestamp.strftime("%Y-%m-%d %H:%M:%S")
+            result[board] = {'last_update': last_update_str, 'candidates': candidates}
+        return jsonify(result)
     except Exception as e:
         logger.error(f"Lỗi khi lấy dữ liệu vote hiện tại từ DB: {e}")
-        return jsonify({'last_update': None, 'candidates': [], 'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
     finally:
         session.close()
 
