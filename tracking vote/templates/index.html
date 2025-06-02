@@ -126,25 +126,26 @@
         function renderHistoryTable(board) {
             let members = teamMembers[board];
             let data = historyData[board];
-            // Đảo ngược: mốc thời gian mới nhất ở trên cùng
+            // Không đảo ngược nữa, API đã trả về mốc mới nhất lên trên
             data = [...data];
             if (!members.length || !data.length) {
                 document.getElementById(`team${board}HistoryTable`).innerHTML = '<div class="text-center text-muted">Chưa có dữ liệu lịch sử.</div>';
                 return;
             }
-            data = data.reverse();
             let html = '<div class="table-responsive"><table class="table table-bordered table-striped align-middle text-center">';
             html += '<thead><tr><th>Thời gian</th>';
             members.forEach(name => html += `<th>${name}</th>`);
             html += '</tr></thead><tbody>';
             for (let i = 0; i < data.length; i++) {
                 const row = data[i];
-                const date = new Date(row.timestamp.replace(' ', 'T') + '+07:00');
+                // Không cộng +07:00 nữa, backend đã trả về đúng GMT+7
+                const date = new Date(row.timestamp.replace(' ', 'T'));
                 const formattedTime = date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
                 html += `<tr><td>${formattedTime}</td>`;
                 members.forEach(name => {
                     let value = row[name] !== undefined ? row[name] : '';
                     let delta = null, color = '', deltaStr = '';
+                    // Delta: lấy sau trừ trước, hiển thị ở mốc sau (dòng trên)
                     if (value !== '' && i < data.length-1 && data[i+1][name] !== undefined) {
                         delta = +(value - data[i+1][name]).toFixed(2);
                         if (delta > 0) { color = 'green'; deltaStr = ` <span style=\"color:green\">(+${delta})</span>`; }
@@ -162,14 +163,14 @@
         function renderChart(board) {
             let members = teamMembers[board];
             let data = [...historyData[board]];
-            // Lấy 10 mốc gần nhất, mốc mới nhất nằm bên trái
+            // Lấy 10 mốc gần nhất, mốc mới nhất nằm bên phải
             if (!members.length || !data.length) {
                 document.getElementById(`team${board}ChartContainer`).innerHTML = '';
                 return;
             }
-            data = data.slice(0, 10).reverse();
+            data = data.slice(0, 10); // Không đảo ngược nữa
             let labels = data.map(row => {
-                const date = new Date(row.timestamp.replace(' ', 'T') + '+07:00');
+                const date = new Date(row.timestamp.replace(' ', 'T'));
                 return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
             });
             let allValues = [];
