@@ -176,19 +176,20 @@
                     backgroundColor: color,
                     fill: false,
                     tension: 0.2,
-                    pointRadius: 1.25,
-                    pointHoverRadius: 2
+                    pointRadius: 2.5,
+                    pointHoverRadius: 4
                 };
             });
             let canvasId = `team${board}Chart`;
             let container = document.getElementById(`team${board}ChartContainer`);
-            container.innerHTML = `<canvas id=\"${canvasId}\" height=\"120\"></canvas>`;
+            container.innerHTML = `<canvas id=\"${canvasId}\" height=\"450\"></canvas>`;
             if (charts[board]) charts[board].destroy();
             charts[board] = new Chart(document.getElementById(canvasId).getContext('2d'), {
                 type: 'line',
                 data: { labels, datasets },
                 options: {
                     responsive: true,
+                    aspectRatio: 16/9,
                     plugins: {
                         legend: { position: 'top' },
                         title: { display: true, text: `Biểu đồ biến động tỉ lệ bình chọn - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` },
