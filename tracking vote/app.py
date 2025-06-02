@@ -239,9 +239,13 @@ def get_history():
         filtered_snapshots = []
         last_snapshot_time = None
         for record in records:
-            ts = record.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+            ts = record.timestamp
+            # Luôn convert về Asia/Ho_Chi_Minh (GMT+7)
+            if ts.tzinfo is None:
+                ts = pytz.utc.localize(ts).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+            else:
+                ts = ts.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
             if not last_snapshot_time or (step_minutes and (last_snapshot_time - ts).total_seconds() >= step_minutes * 60) or not step_minutes:
-                # Lấy tất cả các bản ghi cùng timestamp
                 snapshot_time = ts.replace(second=0, microsecond=0)
                 if not any(abs((snapshot_time - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
                     filtered_snapshots.append({'timestamp': snapshot_time, 'candidates': []})
@@ -250,7 +254,9 @@ def get_history():
         for snap in filtered_snapshots:
             snap['candidates'] = [
                 {'name': r.candidate_name, 'percent': r.percent}
-                for r in records if r.timestamp.replace(second=0, microsecond=0) == snap['timestamp']
+                for r in records 
+                if (r.timestamp.tzinfo is None and pytz.utc.localize(r.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh')).replace(second=0, microsecond=0) == snap['timestamp'])
+                or (r.timestamp.tzinfo is not None and r.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh')).replace(second=0, microsecond=0) == snap['timestamp'])
             ]
         # Sắp xếp lại cho mốc mới nhất lên trên
         filtered_snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
