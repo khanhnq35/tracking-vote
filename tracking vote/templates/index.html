@@ -38,6 +38,18 @@
             <span class="last-update">Cập nhật lần cuối: <span id="lastUpdate">-</span></span>
         </div>
         {% if is_authenticated %}
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label for="intervalSelect" class="form-label">Chọn khoảng thời gian</label>
+                <select id="intervalSelect" class="form-select">
+                    <option value="10m">10 phút</option>
+                    <option value="30m">30 phút</option>
+                    <option value="1h">1 giờ</option>
+                    <option value="5h">5 giờ</option>
+                    <option value="8h">8 giờ</option>
+                </select>
+            </div>
+        </div>
         <ul class="nav nav-tabs mb-3" id="boardTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="tabA" data-bs-toggle="tab" data-bs-target="#boardA" type="button" role="tab">TEAM KAY TRẦN</button>
@@ -72,6 +84,11 @@
             A: [], B: [], C: []
         };
         let historyData = {A: [], B: [], C: []};
+        let interval = '10m';
+        document.getElementById('intervalSelect').addEventListener('change', function() {
+            interval = this.value;
+            fetchVoteDataAndHistory();
+        });
         function fetchVoteDataAndHistory() {
             fetch('/api/vote-data')
                 .then(res => res.json())
@@ -81,7 +98,7 @@
                         teamMembers[board] = data[board].candidates.map(c => c.name);
                     });
                 });
-            fetch('/api/history')
+            fetch(`/api/history?interval=${interval}`)
                 .then(res => res.json())
                 .then(history => {
                     // Gom nhóm theo board
@@ -145,12 +162,12 @@
         function renderChart(board) {
             let members = teamMembers[board];
             let data = [...historyData[board]];
-            // Đảo ngược: mốc thời gian mới nhất ở trên cùng (labels cũng đảo ngược)
+            // Lấy 10 mốc gần nhất, mốc mới nhất nằm bên trái
             if (!members.length || !data.length) {
                 document.getElementById(`team${board}ChartContainer`).innerHTML = '';
                 return;
             }
-            data = data.reverse();
+            data = data.slice(0, 10).reverse();
             let labels = data.map(row => {
                 const date = new Date(row.timestamp.replace(' ', 'T') + '+07:00');
                 return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
