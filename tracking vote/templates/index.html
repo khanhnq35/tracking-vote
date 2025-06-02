@@ -117,14 +117,17 @@
             html += '<thead><tr><th>Thời gian</th>';
             members.forEach(name => html += `<th>${name}</th>`);
             html += '</tr></thead><tbody>';
-            let prev = {};
-            data.forEach((row, idx) => {
-                html += `<tr><td>${row.timestamp}</td>`;
+            for (let i = 0; i < data.length; i++) {
+                const row = data[i];
+                // Format lại thời gian cho rõ ràng
+                const date = new Date(row.timestamp.replace(' ', 'T') + '+07:00');
+                const formattedTime = date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
+                html += `<tr><td>${formattedTime}</td>`;
                 members.forEach(name => {
                     let value = row[name] !== undefined ? row[name] : '';
                     let delta = null, color = '', deltaStr = '';
-                    if (value !== '' && idx > 0 && data[idx-1][name] !== undefined) {
-                        delta = +(value - data[idx-1][name]).toFixed(2);
+                    if (value !== '' && i > 0 && data[i-1][name] !== undefined) {
+                        delta = +(value - data[i-1][name]).toFixed(2);
                         if (delta > 0) { color = 'green'; deltaStr = ` <span style=\"color:green\">(+${delta})</span>`; }
                         else if (delta < 0) { color = 'red'; deltaStr = ` <span style=\"color:red\">(${delta})</span>`; }
                         else { color = 'black'; deltaStr = ` <span style=\\\"color:black\\\">(0)</span>`; }
@@ -132,7 +135,7 @@
                     html += `<td style=\"color:${color}\">${value !== '' ? value + '%' : '-'}${deltaStr}</td>`;
                 });
                 html += '</tr>';
-            });
+            }
             html += '</tbody></table></div>';
             document.getElementById(`team${board}HistoryTable`).innerHTML = html;
         }
@@ -144,7 +147,18 @@
                 document.getElementById(`team${board}ChartContainer`).innerHTML = '';
                 return;
             }
-            let labels = data.map(row => row.timestamp);
+            let labels = data.map(row => {
+                const date = new Date(row.timestamp.replace(' ', 'T') + '+07:00');
+                return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
+            });
+            // Tìm min/max cho trục Y
+            let allValues = [];
+            members.forEach(name => {
+                allValues = allValues.concat(data.map(row => row[name] !== undefined ? row[name] : null).filter(v => v !== null));
+            });
+            let minY = Math.floor(Math.min(...allValues));
+            let maxY = Math.ceil(Math.max(...allValues));
+            if (minY === maxY) { minY = Math.max(0, minY-1); maxY = maxY+1; }
             let datasets = members.map((name, idx) => {
                 let color = ['#007bff','#dc3545','#28a745','#ffc107','#6f42c1','#20c997','#fd7e14'][idx%7];
                 return {
@@ -154,7 +168,9 @@
                     borderColor: color,
                     backgroundColor: color,
                     fill: false,
-                    tension: 0.2
+                    tension: 0.2,
+                    pointRadius: 5,
+                    pointHoverRadius: 8
                 };
             });
             let canvasId = `team${board}Chart`;
@@ -168,11 +184,12 @@
                     responsive: true,
                     plugins: {
                         legend: { position: 'top' },
-                        title: { display: true, text: `Biểu đồ biến động tỉ lệ bình chọn - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` }
+                        title: { display: true, text: `Biểu đồ biến động tỉ lệ bình chọn - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` },
+                        tooltip: { enabled: true }
                     },
                     interaction: { mode: 'index', intersect: false },
                     scales: {
-                        y: { beginAtZero: true, max: 100, title: { display: true, text: '%' } },
+                        y: { beginAtZero: false, min: minY, max: maxY, title: { display: true, text: '%' } },
                         x: { title: { display: true, text: 'Thời gian' } }
                     }
                 }
