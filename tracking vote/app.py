@@ -216,34 +216,48 @@ def get_history():
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
         interval_map = {
             '10m': 10 * 60,
+            '30m': 30 * 60,
             '1h': 60 * 60,
             '5h': 5 * 60 * 60,
             '1d': 24 * 60 * 60,
             '3d': 3 * 24 * 60 * 60,
             '7d': 7 * 24 * 60 * 60
         }
+        step_map = {
+            '10m': 10,
+            '30m': 30,
+            '1h': 60,
+            '5h': 300
+        }
         seconds = interval_map.get(interval, 24 * 60 * 60)
+        step_minutes = step_map.get(interval, None)
         time_threshold = now - timedelta(seconds=seconds)
         query = session.query(VoteRecord).filter(VoteRecord.timestamp >= time_threshold)
         query = query.order_by(desc(VoteRecord.timestamp))
         records = query.order_by(desc(VoteRecord.timestamp), VoteRecord.candidate_name).all()
-        history_dict = {}
+        # Lọc theo step
+        filtered_snapshots = []
+        last_snapshot_time = None
         for record in records:
-            ts_str = record.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-            if ts_str not in history_dict:
-                history_dict[ts_str] = []
-            history_dict[ts_str].append({
-                'name': record.candidate_name,
-                'percent': record.percent
-            })
-        filtered_history = []
-        ordered_timestamps = sorted(history_dict.keys(), reverse=True)
-        for ts_str in ordered_timestamps:
-            filtered_history.append({
-                'timestamp': ts_str,
-                'candidates': history_dict[ts_str]
-            })
-        return jsonify(filtered_history)
+            ts = record.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+            if not last_snapshot_time or (step_minutes and (last_snapshot_time - ts).total_seconds() >= step_minutes * 60) or not step_minutes:
+                # Lấy tất cả các bản ghi cùng timestamp
+                snapshot_time = ts.replace(second=0, microsecond=0)
+                if not any(abs((snapshot_time - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
+                    filtered_snapshots.append({'timestamp': snapshot_time, 'candidates': []})
+                    last_snapshot_time = snapshot_time
+        # Gán candidates cho từng snapshot
+        for snap in filtered_snapshots:
+            snap['candidates'] = [
+                {'name': r.candidate_name, 'percent': r.percent}
+                for r in records if r.timestamp.replace(second=0, microsecond=0) == snap['timestamp']
+            ]
+        # Sắp xếp lại cho mốc mới nhất lên trên
+        filtered_snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
+        # Định dạng timestamp trả về
+        for snap in filtered_snapshots:
+            snap['timestamp'] = snap['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+        return jsonify(filtered_snapshots)
     except Exception as e:
         logger.error(f"Lỗi khi lấy lịch sử từ DB: {e}")
         return jsonify({'error': str(e)}), 500
