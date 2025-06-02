@@ -39,59 +39,146 @@
         </div>
         <ul class="nav nav-tabs mb-3" id="boardTabs" role="tablist">
             <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="tabA" data-bs-toggle="tab" data-bs-target="#boardA" type="button" role="tab">Bảng A</button>
+                <button class="nav-link active" id="tabA" data-bs-toggle="tab" data-bs-target="#boardA" type="button" role="tab">TEAM KAY TRẦN</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="tabB" data-bs-toggle="tab" data-bs-target="#boardB" type="button" role="tab">Bảng B</button>
+                <button class="nav-link" id="tabB" data-bs-toggle="tab" data-bs-target="#boardB" type="button" role="tab">TEAM TÓC TIÊN</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="tabC" data-bs-toggle="tab" data-bs-target="#boardC" type="button" role="tab">Bảng C</button>
+                <button class="nav-link" id="tabC" data-bs-toggle="tab" data-bs-target="#boardC" type="button" role="tab">TEAM SOOBIN</button>
             </li>
         </ul>
         <div class="tab-content" id="boardTabsContent">
-            <div class="tab-pane fade show active" id="boardA" role="tabpanel"></div>
-            <div class="tab-pane fade" id="boardB" role="tabpanel"></div>
-            <div class="tab-pane fade" id="boardC" role="tabpanel"></div>
+            <div class="tab-pane fade show active" id="boardA" role="tabpanel">
+                <div id="teamAChartContainer" class="mb-4"></div>
+                <div id="teamAHistoryTable"></div>
+            </div>
+            <div class="tab-pane fade" id="boardB" role="tabpanel">
+                <div id="teamBChartContainer" class="mb-4"></div>
+                <div id="teamBHistoryTable"></div>
+            </div>
+            <div class="tab-pane fade" id="boardC" role="tabpanel">
+                <div id="teamCChartContainer" class="mb-4"></div>
+                <div id="teamCHistoryTable"></div>
+            </div>
         </div>
-        <div class="mt-4" id="historyTableContainer"></div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        let prevData = {A: {}, B: {}, C: {}};
-        function updateVoteData() {
+        let teamMembers = {
+            A: [], B: [], C: []
+        };
+        let historyData = {A: [], B: [], C: []};
+        function fetchVoteDataAndHistory() {
             fetch('/api/vote-data')
-                .then(response => response.json())
+                .then(res => res.json())
                 .then(data => {
                     document.getElementById('lastUpdate').textContent = data.A.last_update || '-';
                     ['A','B','C'].forEach(board => {
-                        const container = document.getElementById('board'+board);
-                        container.innerHTML = '';
-                        if (!data[board] || !data[board].candidates) return;
-                        let html = '<div class="row">';
-                        data[board].candidates.forEach(candidate => {
-                            let prev = prevData[board][candidate.name];
-                            let delta = null, color = '', arrow = '';
-                            if (prev !== undefined) {
-                                delta = +(candidate.percent - prev).toFixed(2);
-                                if (delta > 0) { color = 'green'; arrow = '↑'; }
-                                else if (delta < 0) { color = 'red'; arrow = '↓'; }
-                                else { color = 'black'; arrow = '→'; }
-                            }
-                            html += `<div class='col-md-4 mb-4'><div class='card candidate-card'><div class='card-body text-center'>` +
-                                `<h5 class='card-title'>${candidate.name}</h5>` +
-                                `<div class='vote-count'>${candidate.percent}%` +
-                                (delta !== null ? ` <span style='color:${color};font-size:1.2em;'>${arrow} ${delta>0?'+':''}${delta}</span>` : '') +
-                                `</div><p class='card-text'>Tỉ lệ bình chọn</p></div></div></div>`;
-                            prevData[board][candidate.name] = candidate.percent;
-                        });
-                        html += '</div>';
-                        container.innerHTML = html;
+                        teamMembers[board] = data[board].candidates.map(c => c.name);
                     });
-                })
-                .catch(error => console.error('Error:', error));
+                });
+            fetch('/api/history')
+                .then(res => res.json())
+                .then(history => {
+                    // Gom nhóm theo board
+                    let boardHistory = {A: [], B: [], C: []};
+                    history.forEach(item => {
+                        let snapshot = {A: {}, B: {}, C: {}};
+                        item.candidates.forEach(c => {
+                            if (teamMembers.A.includes(c.name)) snapshot.A[c.name] = c.percent;
+                            if (teamMembers.B.includes(c.name)) snapshot.B[c.name] = c.percent;
+                            if (teamMembers.C.includes(c.name)) snapshot.C[c.name] = c.percent;
+                        });
+                        boardHistory.A.push({timestamp: item.timestamp, ...snapshot.A});
+                        boardHistory.B.push({timestamp: item.timestamp, ...snapshot.B});
+                        boardHistory.C.push({timestamp: item.timestamp, ...snapshot.C});
+                    });
+                    historyData = boardHistory;
+                    renderHistoryTable('A');
+                    renderHistoryTable('B');
+                    renderHistoryTable('C');
+                    renderChart('A');
+                    renderChart('B');
+                    renderChart('C');
+                });
         }
-        setInterval(updateVoteData, 10000);
-        updateVoteData();
+        function renderHistoryTable(board) {
+            let members = teamMembers[board];
+            let data = historyData[board];
+            if (!members.length || !data.length) {
+                document.getElementById(`team${board}HistoryTable`).innerHTML = '<div class="text-center text-muted">Chưa có dữ liệu lịch sử.</div>';
+                return;
+            }
+            let html = '<div class="table-responsive"><table class="table table-bordered table-striped align-middle text-center">';
+            html += '<thead><tr><th>Thời gian</th>';
+            members.forEach(name => html += `<th>${name}</th>`);
+            html += '</tr></thead><tbody>';
+            let prev = {};
+            data.forEach(row => {
+                html += `<tr><td>${row.timestamp}</td>`;
+                members.forEach(name => {
+                    let value = row[name] !== undefined ? row[name] : '';
+                    let delta = null, color = '', deltaStr = '';
+                    if (value !== '' && prev[name] !== undefined) {
+                        delta = +(value - prev[name]).toFixed(2);
+                        if (delta > 0) { color = 'green'; deltaStr = ` <span style="color:green">(+${delta})</span>`; }
+                        else if (delta < 0) { color = 'red'; deltaStr = ` <span style="color:red">(${delta})</span>`; }
+                        else { color = 'black'; deltaStr = ` <span style=\"color:black\">(0)</span>`; }
+                    }
+                    html += `<td style="color:${color}">${value !== '' ? value + '%' : '-'}${deltaStr}</td>`;
+                    if (value !== '') prev[name] = value;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table></div>';
+            document.getElementById(`team${board}HistoryTable`).innerHTML = html;
+        }
+        let charts = {A: null, B: null, C: null};
+        function renderChart(board) {
+            let members = teamMembers[board];
+            let data = historyData[board];
+            if (!members.length || !data.length) {
+                document.getElementById(`team${board}ChartContainer`).innerHTML = '';
+                return;
+            }
+            let labels = data.map(row => row.timestamp);
+            let datasets = members.map((name, idx) => {
+                let color = ['#007bff','#dc3545','#28a745','#ffc107','#6f42c1','#20c997','#fd7e14'][idx%7];
+                return {
+                    label: name,
+                    data: data.map(row => row[name] !== undefined ? row[name] : null),
+                    borderWidth: 2,
+                    borderColor: color,
+                    backgroundColor: color,
+                    fill: false,
+                    tension: 0.2
+                };
+            });
+            let canvasId = `team${board}Chart`;
+            let container = document.getElementById(`team${board}ChartContainer`);
+            container.innerHTML = `<canvas id="${canvasId}" height="120"></canvas>`;
+            if (charts[board]) charts[board].destroy();
+            charts[board] = new Chart(document.getElementById(canvasId).getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { display: true, text: `Biểu đồ biến động tỉ lệ bình chọn - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` }
+                    },
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, title: { display: true, text: '%' } },
+                        x: { title: { display: true, text: 'Thời gian' } }
+                    }
+                }
+            });
+        }
+        setInterval(fetchVoteDataAndHistory, 300000); // 5 phút
+        fetchVoteDataAndHistory();
     </script>
     {% if not is_authenticated %}
     <script>
