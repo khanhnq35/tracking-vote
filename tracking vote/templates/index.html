@@ -154,7 +154,7 @@
                 document.getElementById(`team${board}ChartContainer`).innerHTML = '';
                 return;
             }
-            data = data.slice(0, 10); // Lấy 10 mốc đầu tiên (mới nhất)
+            data = data.slice(0, 10).reverse(); // Đảo ngược để mốc mới nhất nằm bên phải
             let labels = data.map(row => {
                 const date = new Date(row.timestamp.replace(' ', 'T'));
                 return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
