@@ -209,14 +209,10 @@ def get_vote_data():
 
 # API trả về lịch sử
 @app.route('/api/history')
-@login_required # Yêu cầu đăng nhập để truy cập
 def get_history():
     session = Session()
     try:
         interval = request.args.get('interval', '1d')
-        candidates_filter = request.args.getlist('candidates')
-        limit = request.args.get('limit', type=int) # Lấy tham số limit, ép kiểu sang int
-
         now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
         interval_map = {
             '10m': 10 * 60,
@@ -228,33 +224,9 @@ def get_history():
         }
         seconds = interval_map.get(interval, 24 * 60 * 60)
         time_threshold = now - timedelta(seconds=seconds)
-
         query = session.query(VoteRecord).filter(VoteRecord.timestamp >= time_threshold)
-
-        if candidates_filter:
-            query = query.filter(VoteRecord.candidate_name.in_(candidates_filter))
-            
-        # Sắp xếp theo timestamp giảm dần
         query = query.order_by(desc(VoteRecord.timestamp))
-        
-        # Giới hạn bản ghi nếu user chưa đăng nhập
-        if not current_user.is_authenticated:
-             # Lấy 10 timestamp gần nhất trong khoảng thời gian đã chọn
-             recent_timestamps = session.query(VoteRecord.timestamp).filter(VoteRecord.timestamp >= time_threshold).order_by(desc(VoteRecord.timestamp)).distinct().limit(10).subquery()
-             query = query.filter(VoteRecord.timestamp.in_(recent_timestamps))
-             logger.info("User not authenticated, limiting history to 10 recent timestamps.")
-        elif limit is not None: # Áp dụng giới hạn nếu user đã đăng nhập và limit được cung cấp
-            # Lấy các timestamp duy nhất giới hạn bởi limit
-            recent_timestamps = session.query(VoteRecord.timestamp).filter(VoteRecord.timestamp >= time_threshold).order_by(desc(VoteRecord.timestamp)).distinct().limit(limit).subquery()
-            query = query.filter(VoteRecord.timestamp.in_(recent_timestamps))
-            logger.info(f"User authenticated, limiting history to {limit} recent timestamps.")
-        else:
-             logger.info("User authenticated, providing full history.")
-             
-        # Lấy bản ghi
         records = query.order_by(desc(VoteRecord.timestamp), VoteRecord.candidate_name).all()
-        
-        # Gom nhóm bản ghi theo timestamp
         history_dict = {}
         for record in records:
             ts_str = record.timestamp.strftime("%Y-%m-%d %H:%M:%S")
@@ -264,17 +236,13 @@ def get_history():
                 'name': record.candidate_name,
                 'percent': record.percent
             })
-            
-        # Chuyển dictionary thành list và giữ nguyên thứ tự đã sắp xếp
         filtered_history = []
-        # Lấy các timestamp duy nhất đã lọc và sắp xếp để duy trì thứ tự
         ordered_timestamps = sorted(history_dict.keys(), reverse=True)
         for ts_str in ordered_timestamps:
-             filtered_history.append({
-                 'timestamp': ts_str,
-                 'candidates': history_dict[ts_str]
-             })
-
+            filtered_history.append({
+                'timestamp': ts_str,
+                'candidates': history_dict[ts_str]
+            })
         return jsonify(filtered_history)
     except Exception as e:
         logger.error(f"Lỗi khi lấy lịch sử từ DB: {e}")
