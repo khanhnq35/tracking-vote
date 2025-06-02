@@ -107,6 +107,8 @@
         function renderHistoryTable(board) {
             let members = teamMembers[board];
             let data = historyData[board];
+            // Sắp xếp tăng dần theo thời gian (dòng cũ ở trên, mới nhất ở dưới)
+            data = [...data].reverse();
             if (!members.length || !data.length) {
                 document.getElementById(`team${board}HistoryTable`).innerHTML = '<div class="text-center text-muted">Chưa có dữ liệu lịch sử.</div>';
                 return;
@@ -116,19 +118,18 @@
             members.forEach(name => html += `<th>${name}</th>`);
             html += '</tr></thead><tbody>';
             let prev = {};
-            data.forEach(row => {
+            data.forEach((row, idx) => {
                 html += `<tr><td>${row.timestamp}</td>`;
                 members.forEach(name => {
                     let value = row[name] !== undefined ? row[name] : '';
                     let delta = null, color = '', deltaStr = '';
-                    if (value !== '' && prev[name] !== undefined) {
-                        delta = +(value - prev[name]).toFixed(2);
-                        if (delta > 0) { color = 'green'; deltaStr = ` <span style="color:green">(+${delta})</span>`; }
-                        else if (delta < 0) { color = 'red'; deltaStr = ` <span style="color:red">(${delta})</span>`; }
-                        else { color = 'black'; deltaStr = ` <span style=\"color:black\">(0)</span>`; }
+                    if (value !== '' && idx > 0 && data[idx-1][name] !== undefined) {
+                        delta = +(value - data[idx-1][name]).toFixed(2);
+                        if (delta > 0) { color = 'green'; deltaStr = ` <span style=\"color:green\">(+${delta})</span>`; }
+                        else if (delta < 0) { color = 'red'; deltaStr = ` <span style=\"color:red\">(${delta})</span>`; }
+                        else { color = 'black'; deltaStr = ` <span style=\\\"color:black\\\">(0)</span>`; }
                     }
-                    html += `<td style="color:${color}">${value !== '' ? value + '%' : '-'}${deltaStr}</td>`;
-                    if (value !== '') prev[name] = value;
+                    html += `<td style=\"color:${color}\">${value !== '' ? value + '%' : '-'}${deltaStr}</td>`;
                 });
                 html += '</tr>';
             });
@@ -138,7 +139,7 @@
         let charts = {A: null, B: null, C: null};
         function renderChart(board) {
             let members = teamMembers[board];
-            let data = historyData[board];
+            let data = [...historyData[board]].reverse(); // đảo ngược cho đúng thứ tự thời gian
             if (!members.length || !data.length) {
                 document.getElementById(`team${board}ChartContainer`).innerHTML = '';
                 return;
@@ -158,7 +159,7 @@
             });
             let canvasId = `team${board}Chart`;
             let container = document.getElementById(`team${board}ChartContainer`);
-            container.innerHTML = `<canvas id="${canvasId}" height="120"></canvas>`;
+            container.innerHTML = `<canvas id=\"${canvasId}\" height=\"120\"></canvas>`;
             if (charts[board]) charts[board].destroy();
             charts[board] = new Chart(document.getElementById(canvasId).getContext('2d'), {
                 type: 'line',
