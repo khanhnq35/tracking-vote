@@ -149,12 +149,12 @@
         function renderChart(board) {
             let members = teamMembers[board];
             let data = [...historyData[board]];
-            // Chỉ lấy tối đa 10 mốc gần nhất, mốc mới nhất nằm bên phải
+            // Chỉ lấy tối đa 20 mốc gần nhất, mốc mới nhất nằm bên phải
             if (!members.length || !data.length) {
                 document.getElementById(`team${board}ChartContainer`).innerHTML = '';
                 return;
             }
-            data = data.slice(0, 10).reverse(); // Đảo ngược để mốc mới nhất nằm bên phải
+            data = data.slice(0, 20).reverse(); // Lấy 20 mốc đầu tiên và đảo ngược để mốc mới nhất nằm bên phải
             let labels = data.map(row => {
                 const date = new Date(row.timestamp.replace(' ', 'T'));
                 return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
