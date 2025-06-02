@@ -37,195 +37,61 @@
         <div class="text-center mb-4">
             <span class="last-update">Cập nhật lần cuối: <span id="lastUpdate">-</span></span>
         </div>
-        <form id="filterForm" class="row g-3 mb-4">
-            <div class="col-md-4">
-                <label for="candidateSelect" class="form-label">Chọn 3-5 ứng viên</label>
-                <select id="candidateSelect" class="form-select" multiple></select>
-                <div class="form-text text-danger" id="candidateError" style="display:none"></div>
-            </div>
-            <div class="col-md-3">
-                <label for="intervalSelect" class="form-label">Khoảng thời gian</label>
-                <select id="intervalSelect" class="form-select">
-                    {% if is_authenticated %}
-                    <option value="10m">10 phút</option>
-                    <option value="1h">1 giờ</option>
-                    {% endif %}
-                    <option value="5h">5 giờ</option>
-                    <option value="1d" selected>1 ngày</option>
-                    <option value="3d">3 ngày</option>
-                    <option value="7d">7 ngày</option>
-                </select>
-            </div>
-            <div class="col-md-3" id="limitSelectContainer">
-                <label for="limitSelect" class="form-label">Số lượng bản ghi</label>
-                <select id="limitSelect" class="form-select">
-                    <option value="10">10 bản ghi</option>
-                    <option value="50" selected>50 bản ghi</option>
-                    <option value="100">100 bản ghi</option>
-                </select>
-            </div>
-            <div class="col-md-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-primary w-100">So sánh</button>
-            </div>
-        </form>
-        <div class="row" id="candidatesContainer"></div>
-        <div class="mt-5">
-            <canvas id="historyChart" height="100"></canvas>
+        <ul class="nav nav-tabs mb-3" id="boardTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tabA" data-bs-toggle="tab" data-bs-target="#boardA" type="button" role="tab">Bảng A</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabB" data-bs-toggle="tab" data-bs-target="#boardB" type="button" role="tab">Bảng B</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabC" data-bs-toggle="tab" data-bs-target="#boardC" type="button" role="tab">Bảng C</button>
+            </li>
+        </ul>
+        <div class="tab-content" id="boardTabsContent">
+            <div class="tab-pane fade show active" id="boardA" role="tabpanel"></div>
+            <div class="tab-pane fade" id="boardB" role="tabpanel"></div>
+            <div class="tab-pane fade" id="boardC" role="tabpanel"></div>
         </div>
         <div class="mt-4" id="historyTableContainer"></div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        let allCandidates = [];
-        function fetchAllCandidates() {
-            fetch('/api/vote-data')
-                .then(res => res.json())
-                .then(data => {
-                    allCandidates = data.candidates.map(c => c.name);
-                    const select = document.getElementById('candidateSelect');
-                    select.innerHTML = '';
-                    allCandidates.forEach(name => {
-                        const option = document.createElement('option');
-                        option.value = name;
-                        option.textContent = name;
-                        select.appendChild(option);
-                    });
-                });
-        }
-        fetchAllCandidates();
-
+        let prevData = {A: {}, B: {}, C: {}};
         function updateVoteData() {
             fetch('/api/vote-data')
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('lastUpdate').textContent = data.last_update;
-                    const container = document.getElementById('candidatesContainer');
-                    container.innerHTML = '';
-                    data.candidates.forEach(candidate => {
-                        const card = document.createElement('div');
-                        card.className = 'col-md-4 mb-4';
-                        card.innerHTML = `
-                            <div class="card candidate-card">
-                                <div class="card-body text-center">
-                                    <h5 class="card-title">${candidate.name}</h5>
-                                    <div class="vote-count">${candidate.percent}%</div>
-                                    <p class="card-text">Tỉ lệ bình chọn</p>
-                                </div>
-                            </div>
-                        `;
-                        container.appendChild(card);
+                    document.getElementById('lastUpdate').textContent = data.A.last_update || '-';
+                    ['A','B','C'].forEach(board => {
+                        const container = document.getElementById('board'+board);
+                        container.innerHTML = '';
+                        if (!data[board] || !data[board].candidates) return;
+                        let html = '<div class="row">';
+                        data[board].candidates.forEach(candidate => {
+                            let prev = prevData[board][candidate.name];
+                            let delta = null, color = '', arrow = '';
+                            if (prev !== undefined) {
+                                delta = +(candidate.percent - prev).toFixed(2);
+                                if (delta > 0) { color = 'green'; arrow = '↑'; }
+                                else if (delta < 0) { color = 'red'; arrow = '↓'; }
+                                else { color = 'black'; arrow = '→'; }
+                            }
+                            html += `<div class='col-md-4 mb-4'><div class='card candidate-card'><div class='card-body text-center'>` +
+                                `<h5 class='card-title'>${candidate.name}</h5>` +
+                                `<div class='vote-count'>${candidate.percent}%` +
+                                (delta !== null ? ` <span style='color:${color};font-size:1.2em;'>${arrow} ${delta>0?'+':''}${delta}</span>` : '') +
+                                `</div><p class='card-text'>Tỉ lệ bình chọn</p></div></div></div>`;
+                            prevData[board][candidate.name] = candidate.percent;
+                        });
+                        html += '</div>';
+                        container.innerHTML = html;
                     });
                 })
                 .catch(error => console.error('Error:', error));
         }
         setInterval(updateVoteData, 10000);
         updateVoteData();
-
-        let chart;
-        document.getElementById('filterForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const select = document.getElementById('candidateSelect');
-            const selected = Array.from(select.selectedOptions).map(opt => opt.value);
-            const errorDiv = document.getElementById('candidateError');
-            if (selected.length < 3 || selected.length > 5) {
-                errorDiv.textContent = 'Vui lòng chọn từ 3 đến 5 ứng viên.';
-                errorDiv.style.display = 'block';
-                return;
-            } else {
-                errorDiv.style.display = 'none';
-            }
-            const interval = document.getElementById('intervalSelect').value;
-            const limit = document.getElementById('limitSelect').value;
-            let historyUrl = `/api/history?interval=${interval}`; 
-            if (selected.length > 0) {
-                historyUrl += selected.map(name => `&candidates=${encodeURIComponent(name)}`).join('');
-            }
-            historyUrl += `&limit=${limit}`;
-
-            fetch(historyUrl)
-                .then(res => res.json())
-                .then(history => {
-                    console.log("Received history data:", history);
-                    if (!history.length) {
-                        console.log("History data is empty.");
-                        return;
-                    }
-                    // Biểu đồ
-                    const labels = history.map(item => item.timestamp);
-                    const datasets = selected.map((name, idx) => {
-                        const color = ['#007bff','#dc3545','#28a745','#ffc107','#6f42c1'][idx%5];
-                        return {
-                            label: name,
-                            data: history.map(item => {
-                                const found = item.candidates.find(c => c.name === name);
-                                return found ? found.percent : null;
-                            }),
-                            borderWidth: 2,
-                            borderColor: color,
-                            backgroundColor: color,
-                            fill: false,
-                            tension: 0.2
-                        };
-                    });
-                    if (chart) chart.destroy();
-                    chart = new Chart(document.getElementById('historyChart').getContext('2d'), {
-                        type: 'line',
-                        data: { labels, datasets },
-                        options: {
-                            responsive: true,
-                            plugins: {
-                                legend: { position: 'top' },
-                                title: { display: true, text: 'Biến thiên tỉ lệ bình chọn theo thời gian' }
-                            },
-                            interaction: { mode: 'index', intersect: false },
-                            scales: {
-                                y: { beginAtZero: true, max: 100, title: { display: true, text: '%' } },
-                                x: { title: { display: true, text: 'Thời gian' } }
-                            }
-                        }
-                    });
-                    // Bảng so sánh
-                    renderHistoryTable(history, selected);
-                });
-        });
-
-        function renderHistoryTable(history, selected) {
-            let html = '<div class="table-responsive"><table class="table table-bordered table-striped align-middle text-center">';
-            html += '<thead><tr><th>Thời gian</th>';
-            selected.forEach(name => html += `<th>${name}</th>`);
-            html += '</tr></thead><tbody>';
-            // Lưu giá trị trước đó để tính delta
-            let prev = {};
-            history.forEach(item => {
-                // Định dạng timestamp cho hiển thị đúng
-                const date = new Date(item.timestamp); // Tạo đối tượng Date từ chuỗi timestamp
-                const formattedTimestamp = date.toLocaleString('vi-VN', { 
-                    year: 'numeric', 
-                    month: '2-digit', 
-                    day: '2-digit', 
-                    hour: '2-digit', 
-                    minute: '2-digit', 
-                    second: '2-digit' 
-                }); // Định dạng theo locale Việt Nam
-                html += `<tr><td>${formattedTimestamp}</td>`;
-                selected.forEach(name => {
-                    const found = item.candidates.find(c => c.name === name);
-                    let value = found ? found.percent : null;
-                    let delta = null, color = 'black', deltaStr = '';
-                    if (value !== null && prev[name] !== undefined) {
-                        delta = +(value - prev[name]).toFixed(2);
-                        if (delta > 0) { color = 'green'; deltaStr = ` <span style="color:green">(+${delta})</span>`; }
-                        else if (delta < 0) { color = 'red'; deltaStr = ` <span style="color:red">(${delta})</span>`; }
-                        else { color = 'black'; deltaStr = ` <span style=\"color:black\">(0)</span>`; }
-                    }
-                    html += `<td style="color:${color}">${value !== null ? value + '%' : '-'}${deltaStr}</td>`;
-                    if (value !== null) prev[name] = value;
-                });
-                html += '</tr>';
-            });
-            html += '</tbody></table></div>';
-            document.getElementById('historyTableContainer').innerHTML = html;
-        }
     </script>
     {% if not is_authenticated %}
     <script>
