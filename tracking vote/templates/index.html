@@ -1,4 +1,167 @@
-// ... existing code ...
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Theo dõi Vote YVote</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .candidate-card {
+            transition: all 0.3s ease;
+        }
+        .candidate-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .vote-count {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #0d6efd;
+        }
+        .last-update {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid p-3 position-absolute top-0 end-0">
+        {% if is_authenticated %}
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary">Đăng xuất</a>
+        {% else %}
+            <a href="{{ url_for('login') }}" class="btn btn-primary">Đăng nhập</a>
+        {% endif %}
+    </div>
+    <div class="container py-5">
+        <h1 class="text-center mb-4">Theo dõi Vote YVote</h1>
+        <div class="text-center mb-4">
+            <span class="last-update">Cập nhật lần cuối: <span id="lastUpdate">-</span></span>
+            <button id="updateButton" class="btn btn-primary ms-3" onclick="fetchVoteDataAndHistory()">
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true" id="updateSpinner"></span>
+                Cập nhật dữ liệu
+            </button>
+        </div>
+        {% if is_authenticated %}
+        <div class="row mb-3">
+            <!-- Đã xóa dropdown chọn khoảng thời gian -->
+        </div>
+        <ul class="nav nav-tabs mb-3" id="boardTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tabA" data-bs-toggle="tab" data-bs-target="#boardA" type="button" role="tab">TEAM KAY TRẦN</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabB" data-bs-toggle="tab" data-bs-target="#boardB" type="button" role="tab">TEAM TÓC TIÊN</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabC" data-bs-toggle="tab" data-bs-target="#boardC" type="button" role="tab">TEAM SOOBIN</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabRealData" data-bs-toggle="tab" data-bs-target="#realDataTab" type="button" role="tab">Số liệu thực tế</button>
+            </li>
+        </ul>
+        <div class="tab-content" id="boardTabsContent">
+            <div class="tab-pane fade show active" id="boardA" role="tabpanel">
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
+                    <div id="teamAChartContainer" class="mb-4"></div>
+                </div>
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
+                    <div id="teamAChartContainerFull" class="mb-4"></div>
+                </div>
+                <div id="teamAHistoryTable"></div>
+            </div>
+            <div class="tab-pane fade" id="boardB" role="tabpanel">
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
+                    <div id="teamBChartContainer" class="mb-4"></div>
+                </div>
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
+                    <div id="teamBChartContainerFull" class="mb-4"></div>
+                </div>
+                <div id="teamBHistoryTable"></div>
+            </div>
+            <div class="tab-pane fade" id="boardC" role="tabpanel">
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
+                    <div id="teamCChartContainer" class="mb-4"></div>
+                </div>
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
+                    <div id="teamCChartContainerFull" class="mb-4"></div>
+                </div>
+                <div id="teamCHistoryTable"></div>
+            </div>
+            <div class="tab-pane fade" id="realDataTab" role="tabpanel">
+                <div class="mb-3">
+                    <label for="realDataTeamSelect" class="form-label">Chọn team:</label>
+                    <select id="realDataTeamSelect" class="form-select" style="max-width: 300px;">
+                        <option value="A">TEAM KAY TRẦN</option>
+                        <option value="B">TEAM TÓC TIÊN</option>
+                        <option value="C">TEAM SOOBIN</option>
+                    </select>
+                </div>
+                <div id="realDataTable"></div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let teamMembers = {
+            A: [], B: [], C: []
+        };
+        let historyData = {A: [], B: [], C: []};
+        let charts = {A: null, B: null, C: null, AFull: null, BFull: null, CFull: null};
+
+        // Thêm hàm xử lý sự kiện click cho nút cập nhật
+        document.getElementById('updateButton').addEventListener('click', function() {
+            const button = this;
+            const spinner = document.getElementById('updateSpinner');
+            button.disabled = true;
+            spinner.classList.remove('d-none');
+            
+            fetchVoteDataAndHistory().finally(() => {
+                button.disabled = false;
+                spinner.classList.add('d-none');
+            });
+        });
+
+        async function fetchVoteDataAndHistory() {
+            try {
+                const [voteDataRes, historyRes] = await Promise.all([
+                    fetch('/api/vote-data'),
+                    fetch('/api/history')
+                ]);
+                
+                const data = await voteDataRes.json();
+                const history = await historyRes.json();
+
+                // Chuyển đổi thời gian sang GMT+7
+                if (data.A.last_update) {
+                    const date = new Date(data.A.last_update.replace(' ', 'T'));
+                    const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
+                    document.getElementById('lastUpdate').textContent = gmt7Date.toLocaleString('vi-VN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
+                    });
+                } else {
+                    document.getElementById('lastUpdate').textContent = '-';
+                }
+
+                ['A','B','C'].forEach(board => {
+                    teamMembers[board] = data[board].candidates.map(c => c.name);
+                });
+
+                // Gom nhóm theo board
+                let boardHistory = {A: [], B: [], C: []};
                 history.forEach(item => {
                     let snapshot = {A: {}, B: {}, C: {}};
                     item.candidates.forEach(c => {
@@ -19,7 +182,209 @@
                     boardHistory.B.push({timestamp: item.timestamp, ...snapshot.B});
                     boardHistory.C.push({timestamp: item.timestamp, ...snapshot.C});
                 });
-// ... existing code ...
+                historyData = boardHistory;
+
+                // Render tất cả các biểu đồ và bảng
+                renderHistoryTable('A');
+                renderHistoryTable('B');
+                renderHistoryTable('C');
+                renderChart('A');
+                renderChart('B');
+                renderChart('C');
+                // Render bảng số liệu thực tế
+                renderRealDataTable(document.getElementById('realDataTeamSelect').value);
+            } catch (error) {
+                console.error('Lỗi khi cập nhật dữ liệu:', error);
+                alert('Có lỗi xảy ra khi cập nhật dữ liệu. Vui lòng thử lại sau.');
+            }
+        }
+
+        function renderHistoryTable(board) {
+            let members = teamMembers[board];
+            let data = historyData[board];
+            // Không đảo ngược nữa, API đã trả về mốc mới nhất lên trên
+            data = [...data];
+            if (!members.length || !data.length) {
+                document.getElementById(`team${board}HistoryTable`).innerHTML = '<div class="text-center text-muted">Chưa có dữ liệu lịch sử.</div>';
+                return;
+            }
+            let html = '<div class="table-responsive"><table class="table table-bordered table-striped align-middle text-center">';
+            html += '<thead><tr><th>Thời gian</th>';
+            members.forEach(name => html += `<th>${name}</th>`);
+            html += '</tr></thead><tbody>';
+            for (let i = 0; i < data.length; i++) {
+                const row = data[i];
+                // Không cộng +07:00 nữa, backend đã trả về đúng GMT+7
+                const date = new Date(row.timestamp.replace(' ', 'T'));
+                const formattedTime = date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
+                html += `<tr><td>${formattedTime}</td>`;
+                members.forEach(name => {
+                    let value = row[name] !== undefined ? row[name] : '';
+                    let delta = null, color = '', deltaStr = '';
+                    // Delta: lấy sau trừ trước, hiển thị ở mốc sau (dòng trên)
+                    if (value !== '' && i < data.length-1 && data[i+1][name] !== undefined) {
+                        delta = +(value - data[i+1][name]).toFixed(2);
+                        if (delta > 0) { color = 'green'; deltaStr = ` <span style=\"color:green\">(+${delta})</span>`; }
+                        else if (delta < 0) { color = 'red'; deltaStr = ` <span style=\"color:red\">(${delta})</span>`; }
+                        else { color = 'black'; deltaStr = ` <span style=\\\"color:black\\\">(0)</span>`; }
+                    }
+                    html += `<td style=\"color:${color}\">${value !== '' ? value + '%' : '-'}${deltaStr}</td>`;
+                });
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+            document.getElementById(`team${board}HistoryTable`).innerHTML = html;
+        }
+        function renderChart(board) {
+            let members = teamMembers[board];
+            let data = [...historyData[board]];
+            if (!members.length || !data.length) {
+                document.getElementById(`team${board}ChartContainer`).innerHTML = '';
+                document.getElementById(`team${board}ChartContainerFull`).innerHTML = '';
+                return;
+            }
+
+            // Biểu đồ 20 mốc gần nhất
+            let recentData = data.slice(0, 20).reverse();
+            let recentLabels = recentData.map(row => {
+                const date = new Date(row.timestamp.replace(' ', 'T'));
+                return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+            });
+
+            // Biểu đồ toàn bộ dữ liệu
+            let fullData = [...data].reverse();
+            let fullLabels = fullData.map(row => {
+                const date = new Date(row.timestamp.replace(' ', 'T'));
+                return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit'});
+            });
+
+            let allValues = [];
+            members.forEach(name => {
+                allValues = allValues.concat(data.map(row => row[name] !== undefined ? row[name] : null).filter(v => v !== null));
+            });
+            let minY = Math.floor(Math.min(...allValues));
+            let maxY = Math.ceil(Math.max(...allValues));
+            if (minY === maxY) { minY = Math.max(0, minY-1); maxY = maxY+1; }
+
+            let datasets = members.map((name, idx) => {
+                let color = ['#007bff','#dc3545','#28a745','#ffc107','#6f42c1','#20c997','#fd7e14'][idx%7];
+                return {
+                    label: name,
+                    data: recentData.map(row => row[name] !== undefined ? row[name] : null),
+                    borderWidth: 2,
+                    borderColor: color,
+                    backgroundColor: color,
+                    fill: false,
+                    tension: 0.2,
+                    pointRadius: 2.5,
+                    pointHoverRadius: 4
+                };
+            });
+
+            let fullDatasets = members.map((name, idx) => {
+                let color = ['#007bff','#dc3545','#28a745','#ffc107','#6f42c1','#20c997','#fd7e14'][idx%7];
+                return {
+                    label: name,
+                    data: fullData.map(row => row[name] !== undefined ? row[name] : null),
+                    borderWidth: 2,
+                    borderColor: color,
+                    backgroundColor: color,
+                    fill: false,
+                    tension: 0.2,
+                    pointRadius: 0, // Ẩn chấm tròn
+                    pointHoverRadius: 0 // Ẩn chấm tròn khi hover
+                };
+            });
+
+            // Render biểu đồ 20 mốc gần nhất
+            let canvasId = `team${board}Chart`;
+            let container = document.getElementById(`team${board}ChartContainer`);
+            container.innerHTML = `<canvas id="${canvasId}" height="600" style="width:100%"></canvas>`;
+            if (charts[board]) charts[board].destroy();
+            charts[board] = new Chart(document.getElementById(canvasId).getContext('2d'), {
+                type: 'line',
+                data: { labels: recentLabels, datasets },
+                options: {
+                    responsive: true,
+                    aspectRatio: 16/9,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { display: true, text: `Biểu đồ 20 mốc gần nhất - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` },
+                        tooltip: { 
+                            enabled: true,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`;
+                                }
+                            }
+                        }
+                    },
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { 
+                            beginAtZero: false, 
+                            min: minY, 
+                            max: maxY, 
+                            title: { display: true, text: '%' } 
+                        },
+                        x: { 
+                            title: { display: true, text: 'Thời gian' },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Render biểu đồ toàn bộ dữ liệu
+            let canvasIdFull = `team${board}ChartFull`;
+            let containerFull = document.getElementById(`team${board}ChartContainerFull`);
+            containerFull.innerHTML = `<canvas id="${canvasIdFull}" height="600" style="width:100%"></canvas>`;
+            if (charts[`${board}Full`]) charts[`${board}Full`].destroy();
+            charts[`${board}Full`] = new Chart(document.getElementById(canvasIdFull).getContext('2d'), {
+                type: 'line',
+                data: { labels: fullLabels, datasets: fullDatasets },
+                options: {
+                    responsive: true,
+                    aspectRatio: 16/9,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { display: true, text: `Biểu đồ toàn bộ dữ liệu - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` },
+                        tooltip: { 
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    // Hiện timestamp và % vote
+                                    const idx = context.dataIndex;
+                                    const label = context.dataset.label;
+                                    const value = context.parsed.y;
+                                    const time = fullLabels[idx];
+                                    return `${label}: ${value !== null ? value.toFixed(2) : '-'}%\nThời gian: ${time}`;
+                                }
+                            }
+                        }
+                    },
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { 
+                            beginAtZero: false, 
+                            min: minY, 
+                            max: maxY, 
+                            title: { display: true, text: '%' } 
+                        },
+                        x: { 
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Hàm render bảng số liệu thực tế (không làm tròn %)
         function renderRealDataTable(board) {
             let members = teamMembers[board];
             let data = historyData[board];
@@ -45,4 +410,51 @@
             html += '</tbody></table></div>';
             document.getElementById('realDataTable').innerHTML = html;
         }
-// ... existing code ...
+
+        // Sự kiện đổi team cho bảng số liệu thực tế
+        document.addEventListener('DOMContentLoaded', function() {
+            const realDataTeamSelect = document.getElementById('realDataTeamSelect');
+            if (realDataTeamSelect) {
+                realDataTeamSelect.addEventListener('change', function() {
+                    renderRealDataTable(this.value);
+                });
+            }
+        });
+
+        setInterval(fetchVoteDataAndHistory, 300000); // 5 phút
+        fetchVoteDataAndHistory();
+    </script>
+    {% if not is_authenticated %}
+    <script>
+        // Hide 10m and 1h options and limit select for unauthenticated users
+        document.addEventListener('DOMContentLoaded', function() {
+            const intervalSelect = document.getElementById('intervalSelect');
+            const limitSelectContainer = document.getElementById('limitSelectContainer');
+
+            // Remove 10m and 1h options
+            const option10m = intervalSelect.querySelector('option[value="10m"]');
+            const option1h = intervalSelect.querySelector('option[value="1h"]');
+            if (option10m) option10m.remove();
+            if (option1h) option1h.remove();
+
+            // Hide limit select
+            if (limitSelectContainer) {
+                limitSelectContainer.style.display = 'none';
+                // Although hidden, set default limit to 10 to be sure
+                const limitSelect = document.getElementById('limitSelect');
+                if (limitSelect) limitSelect.value = '10';
+            }
+            
+            // Update the form submit listener to ensure limit is 10 for public
+            document.getElementById('filterForm').addEventListener('submit', function(e) {
+                // The fetch call already handles the limit parameter, 
+                // and backend enforces 10 for unauthenticated users.
+                // No need to change the fetch call here, just ensure the limit select value is 10 (though it's hidden).
+                const limitSelect = document.getElementById('limitSelect');
+                 if (limitSelect) limitSelect.value = '10'; // Redundant, but safe
+            }, { once: true }); // Add once: true to avoid adding multiple listeners if this script runs again
+        });
+    </script>
+    {% endif %}co
+</body>
+</html> 
