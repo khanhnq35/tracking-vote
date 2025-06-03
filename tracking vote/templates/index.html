@@ -393,7 +393,7 @@
                 const formattedTime = date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
                 html += `<tr><td>${formattedTime}</td>`;
                 members.forEach(name => {
-                    let value = row[name] !== undefined ? row[name] : '';
+                    let value = row[name + '_real'] !== undefined ? row[name + '_real'] : (row[name] !== undefined ? row[name] : '');
                     html += `<td>${value !== '' ? value + '%' : '-'}</td>`;
                 });
                 html += '</tr>';
