@@ -58,41 +58,35 @@
         </ul>
         <div class="tab-content" id="boardTabsContent">
             <div class="tab-pane fade show active" id="boardA" role="tabpanel">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
-                        <div id="teamAChartContainer" class="mb-4"></div>
-                    </div>
-                    <div class="col-md-6">
-                        <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
-                        <div id="teamAChartContainerFull" class="mb-4"></div>
-                    </div>
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
+                    <div id="teamAChartContainer" class="mb-4"></div>
+                </div>
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
+                    <div id="teamAChartContainerFull" class="mb-4"></div>
                 </div>
                 <div id="teamAHistoryTable"></div>
             </div>
             <div class="tab-pane fade" id="boardB" role="tabpanel">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
-                        <div id="teamBChartContainer" class="mb-4"></div>
-                    </div>
-                    <div class="col-md-6">
-                        <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
-                        <div id="teamBChartContainerFull" class="mb-4"></div>
-                    </div>
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
+                    <div id="teamBChartContainer" class="mb-4"></div>
+                </div>
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
+                    <div id="teamBChartContainerFull" class="mb-4"></div>
                 </div>
                 <div id="teamBHistoryTable"></div>
             </div>
             <div class="tab-pane fade" id="boardC" role="tabpanel">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
-                        <div id="teamCChartContainer" class="mb-4"></div>
-                    </div>
-                    <div class="col-md-6">
-                        <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
-                        <div id="teamCChartContainerFull" class="mb-4"></div>
-                    </div>
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
+                    <div id="teamCChartContainer" class="mb-4"></div>
+                </div>
+                <div class="mb-4">
+                    <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
+                    <div id="teamCChartContainerFull" class="mb-4"></div>
                 </div>
                 <div id="teamCHistoryTable"></div>
             </div>
@@ -274,15 +268,15 @@
                     backgroundColor: color,
                     fill: false,
                     tension: 0.2,
-                    pointRadius: 1.5,
-                    pointHoverRadius: 4
+                    pointRadius: 0, // Ẩn chấm tròn
+                    pointHoverRadius: 0 // Ẩn chấm tròn khi hover
                 };
             });
 
             // Render biểu đồ 20 mốc gần nhất
             let canvasId = `team${board}Chart`;
             let container = document.getElementById(`team${board}ChartContainer`);
-            container.innerHTML = `<canvas id="${canvasId}" height="450"></canvas>`;
+            container.innerHTML = `<canvas id="${canvasId}" height="600" style="width:100%"></canvas>`;
             if (charts[board]) charts[board].destroy();
             charts[board] = new Chart(document.getElementById(canvasId).getContext('2d'), {
                 type: 'line',
@@ -324,7 +318,7 @@
             // Render biểu đồ toàn bộ dữ liệu
             let canvasIdFull = `team${board}ChartFull`;
             let containerFull = document.getElementById(`team${board}ChartContainerFull`);
-            containerFull.innerHTML = `<canvas id="${canvasIdFull}" height="450"></canvas>`;
+            containerFull.innerHTML = `<canvas id="${canvasIdFull}" height="600" style="width:100%"></canvas>`;
             if (charts[`${board}Full`]) charts[`${board}Full`].destroy();
             charts[`${board}Full`] = new Chart(document.getElementById(canvasIdFull).getContext('2d'), {
                 type: 'line',
@@ -337,9 +331,16 @@
                         title: { display: true, text: `Biểu đồ toàn bộ dữ liệu - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` },
                         tooltip: { 
                             enabled: true,
+                            mode: 'index',
+                            intersect: false,
                             callbacks: {
                                 label: function(context) {
-                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`;
+                                    // Hiện timestamp và % vote
+                                    const idx = context.dataIndex;
+                                    const label = context.dataset.label;
+                                    const value = context.parsed.y;
+                                    const time = fullLabels[idx];
+                                    return `${label}: ${value !== null ? value.toFixed(2) : '-'}%\nThời gian: ${time}`;
                                 }
                             }
                         }
