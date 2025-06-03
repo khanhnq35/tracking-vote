@@ -223,16 +223,14 @@
             let recentData = data.slice(0, 20).reverse();
             let recentLabels = recentData.map(row => {
                 const date = new Date(row.timestamp.replace(' ', 'T'));
-                const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
-                return gmt7Date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+                return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
             });
 
             // Biểu đồ toàn bộ dữ liệu
             let fullData = [...data].reverse();
             let fullLabels = fullData.map(row => {
                 const date = new Date(row.timestamp.replace(' ', 'T'));
-                const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
-                return gmt7Date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit'});
+                return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit'});
             });
 
             let allValues = [];
