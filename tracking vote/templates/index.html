@@ -55,25 +55,46 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="tabC" data-bs-toggle="tab" data-bs-target="#boardC" type="button" role="tab">TEAM SOOBIN</button>
             </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="tabAll" data-bs-toggle="tab" data-bs-target="#boardAll" type="button" role="tab">TỔNG QUAN</button>
-            </li>
         </ul>
         <div class="tab-content" id="boardTabsContent">
             <div class="tab-pane fade show active" id="boardA" role="tabpanel">
-                <div id="teamAChartContainer" class="mb-4"></div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
+                        <div id="teamAChartContainer" class="mb-4"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
+                        <div id="teamAChartContainerFull" class="mb-4"></div>
+                    </div>
+                </div>
                 <div id="teamAHistoryTable"></div>
             </div>
             <div class="tab-pane fade" id="boardB" role="tabpanel">
-                <div id="teamBChartContainer" class="mb-4"></div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
+                        <div id="teamBChartContainer" class="mb-4"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
+                        <div id="teamBChartContainerFull" class="mb-4"></div>
+                    </div>
+                </div>
                 <div id="teamBHistoryTable"></div>
             </div>
             <div class="tab-pane fade" id="boardC" role="tabpanel">
-                <div id="teamCChartContainer" class="mb-4"></div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
+                        <div id="teamCChartContainer" class="mb-4"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
+                        <div id="teamCChartContainerFull" class="mb-4"></div>
+                    </div>
+                </div>
                 <div id="teamCHistoryTable"></div>
-            </div>
-            <div class="tab-pane fade" id="boardAll" role="tabpanel">
-                <div id="teamAllChartContainer" class="mb-4"></div>
             </div>
         </div>
         {% endif %}
@@ -85,7 +106,7 @@
             A: [], B: [], C: []
         };
         let historyData = {A: [], B: [], C: []};
-        let charts = {A: null, B: null, C: null, All: null};
+        let charts = {A: null, B: null, C: null, AFull: null, BFull: null, CFull: null};
 
         // Thêm hàm xử lý sự kiện click cho nút cập nhật
         document.getElementById('updateButton').addEventListener('click', function() {
@@ -153,136 +174,12 @@
                 renderChart('A');
                 renderChart('B');
                 renderChart('C');
-                renderAllTimeChart();
             } catch (error) {
                 console.error('Lỗi khi cập nhật dữ liệu:', error);
                 alert('Có lỗi xảy ra khi cập nhật dữ liệu. Vui lòng thử lại sau.');
             }
         }
 
-        function renderAllTimeChart() {
-            let data = [...historyData.A];
-            if (!data.length) {
-                document.getElementById('teamAllChartContainer').innerHTML = '';
-                return;
-            }
-
-            // Lọc các mốc thời gian đại diện (7h, 11h, 17h, 19h, 23h)
-            let representativeHours = [7, 11, 17, 19, 23];
-            let filteredData = data.filter(row => {
-                const date = new Date(row.timestamp.replace(' ', 'T'));
-                const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
-                return representativeHours.includes(gmt7Date.getHours());
-            });
-
-            // Tạo labels cho trục x
-            let labels = filteredData.map(row => {
-                const date = new Date(row.timestamp.replace(' ', 'T'));
-                const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
-                return gmt7Date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit'});
-            });
-
-            // Tạo datasets cho mỗi team
-            let datasets = [
-                {
-                    label: 'TEAM KAY TRẦN',
-                    data: filteredData.map(row => {
-                        let sum = 0;
-                        let count = 0;
-                        Object.entries(row).forEach(([key, value]) => {
-                            if (key !== 'timestamp' && teamMembers.A.includes(key)) {
-                                sum += value;
-                                count++;
-                            }
-                        });
-                        return count > 0 ? sum / count : null;
-                    }),
-                    borderColor: '#007bff',
-                    backgroundColor: '#007bff',
-                    fill: false,
-                    tension: 0.2
-                },
-                {
-                    label: 'TEAM TÓC TIÊN',
-                    data: filteredData.map(row => {
-                        let sum = 0;
-                        let count = 0;
-                        Object.entries(row).forEach(([key, value]) => {
-                            if (key !== 'timestamp' && teamMembers.B.includes(key)) {
-                                sum += value;
-                                count++;
-                            }
-                        });
-                        return count > 0 ? sum / count : null;
-                    }),
-                    borderColor: '#dc3545',
-                    backgroundColor: '#dc3545',
-                    fill: false,
-                    tension: 0.2
-                },
-                {
-                    label: 'TEAM SOOBIN',
-                    data: filteredData.map(row => {
-                        let sum = 0;
-                        let count = 0;
-                        Object.entries(row).forEach(([key, value]) => {
-                            if (key !== 'timestamp' && teamMembers.C.includes(key)) {
-                                sum += value;
-                                count++;
-                            }
-                        });
-                        return count > 0 ? sum / count : null;
-                    }),
-                    borderColor: '#28a745',
-                    backgroundColor: '#28a745',
-                    fill: false,
-                    tension: 0.2
-                }
-            ];
-
-            let canvasId = 'teamAllChart';
-            let container = document.getElementById('teamAllChartContainer');
-            container.innerHTML = `<canvas id="${canvasId}" height="450"></canvas>`;
-
-            if (charts.All) charts.All.destroy();
-            charts.All = new Chart(document.getElementById(canvasId).getContext('2d'), {
-                type: 'line',
-                data: { labels, datasets },
-                options: {
-                    responsive: true,
-                    aspectRatio: 16/9,
-                    plugins: {
-                        legend: { position: 'top' },
-                        title: { 
-                            display: true, 
-                            text: 'Biểu đồ biến động tỉ lệ bình chọn theo thời gian' 
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: false,
-                            title: {
-                                display: true,
-                                text: '%'
-                            }
-                        },
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Thời gian'
-                            }
-                        }
-                    }
-                }
-            });
-        }
         function renderHistoryTable(board) {
             let members = teamMembers[board];
             let data = historyData[board];
@@ -322,16 +219,28 @@
         function renderChart(board) {
             let members = teamMembers[board];
             let data = [...historyData[board]];
-            // Chỉ lấy tối đa 20 mốc gần nhất, mốc mới nhất nằm bên phải
             if (!members.length || !data.length) {
                 document.getElementById(`team${board}ChartContainer`).innerHTML = '';
+                document.getElementById(`team${board}ChartContainerFull`).innerHTML = '';
                 return;
             }
-            data = data.slice(0, 20).reverse(); // Lấy 20 mốc đầu tiên và đảo ngược để mốc mới nhất nằm bên phải
-            let labels = data.map(row => {
+
+            // Biểu đồ 20 mốc gần nhất
+            let recentData = data.slice(0, 20).reverse();
+            let recentLabels = recentData.map(row => {
                 const date = new Date(row.timestamp.replace(' ', 'T'));
-                return date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) + ' ' + date.toLocaleDateString('vi-VN');
+                const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
+                return gmt7Date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
             });
+
+            // Biểu đồ toàn bộ dữ liệu
+            let fullData = [...data].reverse();
+            let fullLabels = fullData.map(row => {
+                const date = new Date(row.timestamp.replace(' ', 'T'));
+                const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
+                return gmt7Date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit'});
+            });
+
             let allValues = [];
             members.forEach(name => {
                 allValues = allValues.concat(data.map(row => row[name] !== undefined ? row[name] : null).filter(v => v !== null));
@@ -339,11 +248,12 @@
             let minY = Math.floor(Math.min(...allValues));
             let maxY = Math.ceil(Math.max(...allValues));
             if (minY === maxY) { minY = Math.max(0, minY-1); maxY = maxY+1; }
+
             let datasets = members.map((name, idx) => {
                 let color = ['#007bff','#dc3545','#28a745','#ffc107','#6f42c1','#20c997','#fd7e14'][idx%7];
                 return {
                     label: name,
-                    data: data.map(row => row[name] !== undefined ? row[name] : null),
+                    data: recentData.map(row => row[name] !== undefined ? row[name] : null),
                     borderWidth: 2,
                     borderColor: color,
                     backgroundColor: color,
@@ -353,25 +263,98 @@
                     pointHoverRadius: 4
                 };
             });
+
+            let fullDatasets = members.map((name, idx) => {
+                let color = ['#007bff','#dc3545','#28a745','#ffc107','#6f42c1','#20c997','#fd7e14'][idx%7];
+                return {
+                    label: name,
+                    data: fullData.map(row => row[name] !== undefined ? row[name] : null),
+                    borderWidth: 2,
+                    borderColor: color,
+                    backgroundColor: color,
+                    fill: false,
+                    tension: 0.2,
+                    pointRadius: 1.5,
+                    pointHoverRadius: 4
+                };
+            });
+
+            // Render biểu đồ 20 mốc gần nhất
             let canvasId = `team${board}Chart`;
             let container = document.getElementById(`team${board}ChartContainer`);
-            container.innerHTML = `<canvas id=\"${canvasId}\" height=\"450\"></canvas>`;
+            container.innerHTML = `<canvas id="${canvasId}" height="450"></canvas>`;
             if (charts[board]) charts[board].destroy();
             charts[board] = new Chart(document.getElementById(canvasId).getContext('2d'), {
                 type: 'line',
-                data: { labels, datasets },
+                data: { labels: recentLabels, datasets },
                 options: {
                     responsive: true,
                     aspectRatio: 16/9,
                     plugins: {
                         legend: { position: 'top' },
-                        title: { display: true, text: `Biểu đồ biến động tỉ lệ bình chọn - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` },
-                        tooltip: { enabled: true }
+                        title: { display: true, text: `Biểu đồ 20 mốc gần nhất - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` },
+                        tooltip: { 
+                            enabled: true,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`;
+                                }
+                            }
+                        }
                     },
                     interaction: { mode: 'index', intersect: false },
                     scales: {
-                        y: { beginAtZero: false, min: minY, max: maxY, title: { display: true, text: '%' } },
-                        x: { title: { display: true, text: 'Thời gian' } }
+                        y: { 
+                            beginAtZero: false, 
+                            min: minY, 
+                            max: maxY, 
+                            title: { display: true, text: '%' } 
+                        },
+                        x: { 
+                            title: { display: true, text: 'Thời gian' },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Render biểu đồ toàn bộ dữ liệu
+            let canvasIdFull = `team${board}ChartFull`;
+            let containerFull = document.getElementById(`team${board}ChartContainerFull`);
+            containerFull.innerHTML = `<canvas id="${canvasIdFull}" height="450"></canvas>`;
+            if (charts[`${board}Full`]) charts[`${board}Full`].destroy();
+            charts[`${board}Full`] = new Chart(document.getElementById(canvasIdFull).getContext('2d'), {
+                type: 'line',
+                data: { labels: fullLabels, datasets: fullDatasets },
+                options: {
+                    responsive: true,
+                    aspectRatio: 16/9,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { display: true, text: `Biểu đồ toàn bộ dữ liệu - ${board === 'A' ? 'TEAM KAY TRẦN' : board === 'B' ? 'TEAM TÓC TIÊN' : 'TEAM SOOBIN'}` },
+                        tooltip: { 
+                            enabled: true,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`;
+                                }
+                            }
+                        }
+                    },
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: { 
+                            beginAtZero: false, 
+                            min: minY, 
+                            max: maxY, 
+                            title: { display: true, text: '%' } 
+                        },
+                        x: { 
+                            display: false
+                        }
                     }
                 }
             });
