@@ -36,6 +36,10 @@
         <h1 class="text-center mb-4">Theo dõi Vote YVote</h1>
         <div class="text-center mb-4">
             <span class="last-update">Cập nhật lần cuối: <span id="lastUpdate">-</span></span>
+            <button id="updateButton" class="btn btn-primary ms-3" onclick="fetchVoteDataAndHistory()">
+                <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true" id="updateSpinner"></span>
+                Cập nhật dữ liệu
+            </button>
         </div>
         {% if is_authenticated %}
         <div class="row mb-3">
@@ -51,6 +55,9 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="tabC" data-bs-toggle="tab" data-bs-target="#boardC" type="button" role="tab">TEAM SOOBIN</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tabAll" data-bs-toggle="tab" data-bs-target="#boardAll" type="button" role="tab">TỔNG QUAN</button>
+            </li>
         </ul>
         <div class="tab-content" id="boardTabsContent">
             <div class="tab-pane fade show active" id="boardA" role="tabpanel">
@@ -65,6 +72,9 @@
                 <div id="teamCChartContainer" class="mb-4"></div>
                 <div id="teamCHistoryTable"></div>
             </div>
+            <div class="tab-pane fade" id="boardAll" role="tabpanel">
+                <div id="teamAllChartContainer" class="mb-4"></div>
+            </div>
         </div>
         {% endif %}
     </div>
@@ -75,39 +85,203 @@
             A: [], B: [], C: []
         };
         let historyData = {A: [], B: [], C: []};
-        function fetchVoteDataAndHistory() {
-            fetch('/api/vote-data')
-                .then(res => res.json())
-                .then(data => {
-                    document.getElementById('lastUpdate').textContent = data.A.last_update || '-';
-                    ['A','B','C'].forEach(board => {
-                        teamMembers[board] = data[board].candidates.map(c => c.name);
+        let charts = {A: null, B: null, C: null, All: null};
+
+        // Thêm hàm xử lý sự kiện click cho nút cập nhật
+        document.getElementById('updateButton').addEventListener('click', function() {
+            const button = this;
+            const spinner = document.getElementById('updateSpinner');
+            button.disabled = true;
+            spinner.classList.remove('d-none');
+            
+            fetchVoteDataAndHistory().finally(() => {
+                button.disabled = false;
+                spinner.classList.add('d-none');
+            });
+        });
+
+        async function fetchVoteDataAndHistory() {
+            try {
+                const [voteDataRes, historyRes] = await Promise.all([
+                    fetch('/api/vote-data'),
+                    fetch('/api/history')
+                ]);
+                
+                const data = await voteDataRes.json();
+                const history = await historyRes.json();
+
+                // Chuyển đổi thời gian sang GMT+7
+                if (data.A.last_update) {
+                    const date = new Date(data.A.last_update.replace(' ', 'T'));
+                    const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
+                    document.getElementById('lastUpdate').textContent = gmt7Date.toLocaleString('vi-VN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
                     });
+                } else {
+                    document.getElementById('lastUpdate').textContent = '-';
+                }
+
+                ['A','B','C'].forEach(board => {
+                    teamMembers[board] = data[board].candidates.map(c => c.name);
                 });
-            fetch(`/api/history`)
-                .then(res => res.json())
-                .then(history => {
-                    // Gom nhóm theo board
-                    let boardHistory = {A: [], B: [], C: []};
-                    history.forEach(item => {
-                        let snapshot = {A: {}, B: {}, C: {}};
-                        item.candidates.forEach(c => {
-                            if (teamMembers.A.includes(c.name)) snapshot.A[c.name] = c.percent;
-                            if (teamMembers.B.includes(c.name)) snapshot.B[c.name] = c.percent;
-                            if (teamMembers.C.includes(c.name)) snapshot.C[c.name] = c.percent;
+
+                // Gom nhóm theo board
+                let boardHistory = {A: [], B: [], C: []};
+                history.forEach(item => {
+                    let snapshot = {A: {}, B: {}, C: {}};
+                    item.candidates.forEach(c => {
+                        if (teamMembers.A.includes(c.name)) snapshot.A[c.name] = c.percent;
+                        if (teamMembers.B.includes(c.name)) snapshot.B[c.name] = c.percent;
+                        if (teamMembers.C.includes(c.name)) snapshot.C[c.name] = c.percent;
+                    });
+                    boardHistory.A.push({timestamp: item.timestamp, ...snapshot.A});
+                    boardHistory.B.push({timestamp: item.timestamp, ...snapshot.B});
+                    boardHistory.C.push({timestamp: item.timestamp, ...snapshot.C});
+                });
+                historyData = boardHistory;
+
+                // Render tất cả các biểu đồ và bảng
+                renderHistoryTable('A');
+                renderHistoryTable('B');
+                renderHistoryTable('C');
+                renderChart('A');
+                renderChart('B');
+                renderChart('C');
+                renderAllTimeChart();
+            } catch (error) {
+                console.error('Lỗi khi cập nhật dữ liệu:', error);
+                alert('Có lỗi xảy ra khi cập nhật dữ liệu. Vui lòng thử lại sau.');
+            }
+        }
+
+        function renderAllTimeChart() {
+            let data = [...historyData.A];
+            if (!data.length) {
+                document.getElementById('teamAllChartContainer').innerHTML = '';
+                return;
+            }
+
+            // Lọc các mốc thời gian đại diện (7h, 11h, 17h, 19h, 23h)
+            let representativeHours = [7, 11, 17, 19, 23];
+            let filteredData = data.filter(row => {
+                const date = new Date(row.timestamp.replace(' ', 'T'));
+                const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
+                return representativeHours.includes(gmt7Date.getHours());
+            });
+
+            // Tạo labels cho trục x
+            let labels = filteredData.map(row => {
+                const date = new Date(row.timestamp.replace(' ', 'T'));
+                const gmt7Date = new Date(date.getTime() + (7 * 60 * 60 * 1000));
+                return gmt7Date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit'});
+            });
+
+            // Tạo datasets cho mỗi team
+            let datasets = [
+                {
+                    label: 'TEAM KAY TRẦN',
+                    data: filteredData.map(row => {
+                        let sum = 0;
+                        let count = 0;
+                        Object.entries(row).forEach(([key, value]) => {
+                            if (key !== 'timestamp' && teamMembers.A.includes(key)) {
+                                sum += value;
+                                count++;
+                            }
                         });
-                        boardHistory.A.push({timestamp: item.timestamp, ...snapshot.A});
-                        boardHistory.B.push({timestamp: item.timestamp, ...snapshot.B});
-                        boardHistory.C.push({timestamp: item.timestamp, ...snapshot.C});
-                    });
-                    historyData = boardHistory;
-                    renderHistoryTable('A');
-                    renderHistoryTable('B');
-                    renderHistoryTable('C');
-                    renderChart('A');
-                    renderChart('B');
-                    renderChart('C');
-                });
+                        return count > 0 ? sum / count : null;
+                    }),
+                    borderColor: '#007bff',
+                    backgroundColor: '#007bff',
+                    fill: false,
+                    tension: 0.2
+                },
+                {
+                    label: 'TEAM TÓC TIÊN',
+                    data: filteredData.map(row => {
+                        let sum = 0;
+                        let count = 0;
+                        Object.entries(row).forEach(([key, value]) => {
+                            if (key !== 'timestamp' && teamMembers.B.includes(key)) {
+                                sum += value;
+                                count++;
+                            }
+                        });
+                        return count > 0 ? sum / count : null;
+                    }),
+                    borderColor: '#dc3545',
+                    backgroundColor: '#dc3545',
+                    fill: false,
+                    tension: 0.2
+                },
+                {
+                    label: 'TEAM SOOBIN',
+                    data: filteredData.map(row => {
+                        let sum = 0;
+                        let count = 0;
+                        Object.entries(row).forEach(([key, value]) => {
+                            if (key !== 'timestamp' && teamMembers.C.includes(key)) {
+                                sum += value;
+                                count++;
+                            }
+                        });
+                        return count > 0 ? sum / count : null;
+                    }),
+                    borderColor: '#28a745',
+                    backgroundColor: '#28a745',
+                    fill: false,
+                    tension: 0.2
+                }
+            ];
+
+            let canvasId = 'teamAllChart';
+            let container = document.getElementById('teamAllChartContainer');
+            container.innerHTML = `<canvas id="${canvasId}" height="450"></canvas>`;
+
+            if (charts.All) charts.All.destroy();
+            charts.All = new Chart(document.getElementById(canvasId).getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    aspectRatio: 16/9,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { 
+                            display: true, 
+                            text: 'Biểu đồ biến động tỉ lệ bình chọn theo thời gian' 
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            title: {
+                                display: true,
+                                text: '%'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Thời gian'
+                            }
+                        }
+                    }
+                }
+            });
         }
         function renderHistoryTable(board) {
             let members = teamMembers[board];
@@ -145,7 +319,6 @@
             html += '</tbody></table></div>';
             document.getElementById(`team${board}HistoryTable`).innerHTML = html;
         }
-        let charts = {A: null, B: null, C: null};
         function renderChart(board) {
             let members = teamMembers[board];
             let data = [...historyData[board]];
