@@ -251,7 +251,7 @@ def get_history():
         # Gán candidates cho từng snapshot
         for snap in filtered_snapshots:
             snap['candidates'] = [
-                {'name': r.candidate_name, 'percent': r.percent}
+                {'name': r.candidate_name, 'percent': r.percent, 'real_percent': r.real_percent}
                 for r in records 
                 if (r.timestamp.tzinfo is None and pytz.utc.localize(r.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh')).replace(second=0, microsecond=0) == snap['timestamp'])
                 or (r.timestamp.tzinfo is not None and r.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh')).replace(second=0, microsecond=0) == snap['timestamp'])
