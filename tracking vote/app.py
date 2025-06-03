@@ -30,14 +30,9 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_secret_key') # Lấy Secret Key từ biến môi trường hoặc dùng default
 
 # Cấu hình Database
-DATABASE_URL = os.environ.get('DATABASE_URL') # Lấy từ biến môi trường
+DATABASE_URL = os.environ.get('DATABASE_URL')
 if not DATABASE_URL:
     logger.error("DATABASE_URL is not set.")
-    # Fallback cho local testing với SQLite nếu DATABASE_URL không có
-    # DATABASE_URL = 'sqlite:///local_history.db'
-    # engine = create_engine(DATABASE_URL)
-    # Base.metadata.create_all(engine)
-    # print("WARNING: Using SQLite for local development. Set DATABASE_URL for production.")
     raise ValueError("DATABASE_URL environment variable not set.")
 
 engine = create_engine(DATABASE_URL)
@@ -51,10 +46,11 @@ class VoteRecord(Base):
     timestamp = Column(DateTime, index=True)
     candidate_name = Column(String, index=True)
     percent = Column(Float)
+    real_percent = Column(Float)  # Lưu giá trị gốc không làm tròn
     board = Column(String, index=True)  # Thêm trường board để phân biệt bảng
 
     def __repr__(self):
-        return f"<VoteRecord(timestamp='{self.timestamp}', name='{self.candidate_name}', percent={self.percent}, board='{self.board}')>"
+        return f"<VoteRecord(timestamp='{self.timestamp}', name='{self.candidate_name}', percent={self.percent}, real_percent={self.real_percent}, board='{self.board}')>"
 
 # Định nghĩa Model User cho xác thực
 class User(UserMixin, Base):
@@ -153,10 +149,12 @@ def fetch_vote_data():
                     try:
                         name = item["character"]["name"]
                         percent = round(item["ratioVotes"], 2)
+                        real_percent = item["ratioVotes"]
                         new_vote_records.append(VoteRecord(
                             timestamp=current_time,
                             candidate_name=name,
                             percent=percent,
+                            real_percent=real_percent,
                             board=board_name
                         ))
                     except KeyError as e:
