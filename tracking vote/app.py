@@ -309,44 +309,11 @@ def index():
 # Khởi tạo scheduler
 # Sử dụng timezone từ pytz, ví dụ múi giờ Việt Nam (Asia/Ho_Chi_Minh)
 scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Ho_Chi_Minh'))
-
-def should_fetch_data():
-    now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
-    start_time = datetime(2024, 6, 4, 21, 30, tzinfo=pytz.timezone('Asia/Ho_Chi_Minh'))
-    end_time = datetime(2024, 6, 4, 23, 5, tzinfo=pytz.timezone('Asia/Ho_Chi_Minh'))
-    
-    # Nếu đã qua 23h05 ngày 4/6 thì dừng cập nhật
-    if now > end_time:
-        return False
-        
-    # Nếu trong khoảng 21h30-23h05 ngày 4/6 thì cập nhật mỗi 1 phút
-    if start_time <= now <= end_time:
-        return True
-        
-    # Các trường hợp còn lại cập nhật mỗi 5 phút
-    return True
-
-def scheduled_fetch():
-    if should_fetch_data():
-        fetch_vote_data()
-
-# Thêm job cập nhật mỗi 5 phút
-scheduler.add_job(func=scheduled_fetch, trigger="interval", minutes=5, id='normal_update')
-
-# Thêm job cập nhật mỗi 1 phút trong khoảng thời gian đặc biệt
-scheduler.add_job(
-    func=scheduled_fetch,
-    trigger="interval",
-    minutes=1,
-    start_date=datetime(2024, 6, 4, 21, 30, tzinfo=pytz.timezone('Asia/Ho_Chi_Minh')),
-    end_date=datetime(2024, 6, 4, 23, 5, tzinfo=pytz.timezone('Asia/Ho_Chi_Minh')),
-    id='special_update'
-)
-
+scheduler.add_job(func=fetch_vote_data, trigger="interval", minutes=1)
 scheduler.start()
 
-# Fetch data lần đầu khi ứng dụng được import
-fetch_vote_data()
+# Fetch data lần đầu khi ứng dụng được import (để có dữ liệu ngay từ đầu)
+fetch_vote_data() # Bỏ comment để có dữ liệu ngay khi khởi động
 
 if __name__ == '__main__':
     try:
