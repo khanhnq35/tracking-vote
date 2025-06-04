@@ -311,12 +311,10 @@ def fetch_vote_data_with_cleanup():
     except Exception as e:
         logger.error(f"Lỗi khi fetch và cleanup dữ liệu: {e}")
 
-# Thêm job cập nhật mỗi 1 phút
-scheduler.add_job(func=fetch_vote_data_with_cleanup, trigger="interval", minutes=1)
-scheduler.start()
-
-# Fetch data lần đầu khi ứng dụng được import
-fetch_vote_data_with_cleanup()
+# Tạm thời comment các dòng này để dừng việc fetch dữ liệu mới
+# scheduler.add_job(func=fetch_vote_data_with_cleanup, trigger="interval", minutes=1)
+# scheduler.start()
+# fetch_vote_data_with_cleanup()
 
 if __name__ == '__main__':
     try:
