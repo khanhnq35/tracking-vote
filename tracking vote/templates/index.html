@@ -63,7 +63,7 @@
             <div class="tab-pane fade show active" id="boardA" role="tabpanel">
                 <div class="mb-4">
                     <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
-                    <div id="teamAChartContainer" class="mb-4"></div>
+                <div id="teamAChartContainer" class="mb-4"></div>
                 </div>
                 <div class="mb-4">
                     <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
@@ -75,7 +75,7 @@
             <div class="tab-pane fade" id="boardB" role="tabpanel">
                 <div class="mb-4">
                     <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
-                    <div id="teamBChartContainer" class="mb-4"></div>
+                <div id="teamBChartContainer" class="mb-4"></div>
                 </div>
                 <div class="mb-4">
                     <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
@@ -87,7 +87,7 @@
             <div class="tab-pane fade" id="boardC" role="tabpanel">
                 <div class="mb-4">
                     <h5 class="text-center mb-3">Biểu đồ 20 mốc gần nhất</h5>
-                    <div id="teamCChartContainer" class="mb-4"></div>
+                <div id="teamCChartContainer" class="mb-4"></div>
                 </div>
                 <div class="mb-4">
                     <h5 class="text-center mb-3">Biểu đồ toàn bộ dữ liệu</h5>
@@ -160,15 +160,15 @@
                     document.getElementById('lastUpdate').textContent = '-';
                 }
 
-                ['A','B','C'].forEach(board => {
-                    teamMembers[board] = data[board].candidates.map(c => c.name);
-                });
+                    ['A','B','C'].forEach(board => {
+                        teamMembers[board] = data[board].candidates.map(c => c.name);
+                    });
 
-                // Gom nhóm theo board
-                let boardHistory = {A: [], B: [], C: []};
-                history.forEach(item => {
-                    let snapshot = {A: {}, B: {}, C: {}};
-                    item.candidates.forEach(c => {
+                    // Gom nhóm theo board
+                    let boardHistory = {A: [], B: [], C: []};
+                    history.forEach(item => {
+                        let snapshot = {A: {}, B: {}, C: {}};
+                        item.candidates.forEach(c => {
                         if (teamMembers.A.includes(c.name)) {
                             snapshot.A[c.name] = c.percent;
                             snapshot.A[c.name + '_real'] = c.real_percent;
@@ -181,26 +181,26 @@
                             snapshot.C[c.name] = c.percent;
                             snapshot.C[c.name + '_real'] = c.real_percent;
                         }
+                        });
+                        boardHistory.A.push({timestamp: item.timestamp, ...snapshot.A});
+                        boardHistory.B.push({timestamp: item.timestamp, ...snapshot.B});
+                        boardHistory.C.push({timestamp: item.timestamp, ...snapshot.C});
                     });
-                    boardHistory.A.push({timestamp: item.timestamp, ...snapshot.A});
-                    boardHistory.B.push({timestamp: item.timestamp, ...snapshot.B});
-                    boardHistory.C.push({timestamp: item.timestamp, ...snapshot.C});
-                });
-                historyData = boardHistory;
+                    historyData = boardHistory;
 
                 // Render tất cả các biểu đồ và bảng
-                renderHistoryTable('A');
-                renderHistoryTable('B');
-                renderHistoryTable('C');
-                renderChart('A');
-                renderChart('B');
-                renderChart('C');
+                    renderHistoryTable('A');
+                    renderHistoryTable('B');
+                    renderHistoryTable('C');
+                    renderChart('A');
+                    renderChart('B');
+                    renderChart('C');
                 // Render bảng số liệu thực tế
                 renderRealDataTable(document.getElementById('realDataTeamSelect').value);
             } catch (error) {
                 console.error('Lỗi khi cập nhật dữ liệu:', error);
                 alert('Có lỗi xảy ra khi cập nhật dữ liệu. Vui lòng thử lại sau.');
-            }
+        }
         }
 
         function renderHistoryTable(board) {
@@ -345,7 +345,7 @@
             // Render biểu đồ toàn bộ dữ liệu
             let canvasIdFull = `team${board}ChartFull`;
             let containerFull = document.getElementById(`team${board}ChartContainerFull`);
-            containerFull.innerHTML = `<canvas id="${canvasIdFull}" height="600" style="width:100%"></canvas>`;
+            containerFull.innerHTML = `<canvas id="${canvasIdFull}" height="400" style="width:100%"></canvas>`;
             if (charts[`${board}Full`]) charts[`${board}Full`].destroy();
             charts[`${board}Full`] = new Chart(document.getElementById(canvasIdFull).getContext('2d'), {
                 type: 'line',
@@ -362,7 +362,6 @@
                             intersect: false,
                             callbacks: {
                                 label: function(context) {
-                                    // Hiện timestamp và % vote
                                     const idx = context.dataIndex;
                                     const label = context.dataset.label;
                                     const value = context.parsed.y;
@@ -380,8 +379,23 @@
                             max: maxY, 
                             title: { display: true, text: '%' } 
                         },
-                        x: { 
-                            display: false
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'minute',
+                                displayFormats: {
+                                    minute: 'HH:mm'
+                                }
+                            },
+                            ticks: {
+                                source: 'auto',
+                                maxRotation: 45,
+                                minRotation: 45
+                            },
+                            title: {
+                                display: true,
+                                text: 'Thời gian'
+                            }
                         }
                     }
                 }
