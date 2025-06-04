@@ -248,41 +248,59 @@ def get_vote_data():
 def get_history():
     session = Session()
     try:
-        # Lấy dữ liệu và chuyển đổi timezone ngay từ đầu
-        records = session.query(VoteRecord).order_by(desc(VoteRecord.timestamp)).all()
+        # Lấy dữ liệu theo từng board và giới hạn số lượng records
+        boards = ["A", "B", "C"]
+        all_snapshots = []
         
-        # Chuyển đổi timezone cho tất cả records
-        for record in records:
-            if record.timestamp.tzinfo is None:
-                record.timestamp = pytz.utc.localize(record.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
-            else:
-                record.timestamp = record.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
-
-        # Lọc theo step
-        filtered_snapshots = []
-        last_snapshot_time = None
-        for record in records:
-            ts = record.timestamp.replace(second=0, microsecond=0)
-            if not any(abs((ts - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
-                filtered_snapshots.append({'timestamp': ts, 'candidates': []})
-                last_snapshot_time = ts
-
-        # Gán candidates cho từng snapshot
-        for snap in filtered_snapshots:
-            snap['candidates'] = [
-                {'name': r.candidate_name, 'percent': r.percent, 'real_percent': r.real_percent}
-                for r in records 
-                if r.timestamp.replace(second=0, microsecond=0) == snap['timestamp']
-            ]
-
-        # Sắp xếp lại cho mốc mới nhất lên trên
-        filtered_snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
+        for board in boards:
+            # Lấy records cho từng board
+            records = session.query(VoteRecord).filter_by(board=board).order_by(desc(VoteRecord.timestamp)).all()
+            
+            # Chuyển đổi timezone và lọc theo step
+            filtered_snapshots = []
+            for record in records:
+                if record.timestamp.tzinfo is None:
+                    ts = pytz.utc.localize(record.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+                else:
+                    ts = record.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+                
+                ts = ts.replace(second=0, microsecond=0)
+                
+                # Kiểm tra xem đã có snapshot cho timestamp này chưa
+                if not any(abs((ts - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
+                    filtered_snapshots.append({
+                        'timestamp': ts,
+                        'candidates': [{
+                            'name': record.candidate_name,
+                            'percent': record.percent,
+                            'real_percent': record.real_percent
+                        }]
+                    })
+                else:
+                    # Thêm candidate vào snapshot gần nhất
+                    for snap in filtered_snapshots:
+                        if abs((ts - snap['timestamp']).total_seconds()) < 60:
+                            snap['candidates'].append({
+                                'name': record.candidate_name,
+                                'percent': record.percent,
+                                'real_percent': record.real_percent
+                            })
+                            break
+            
+            # Thêm board vào mỗi snapshot
+            for snap in filtered_snapshots:
+                snap['board'] = board
+            
+            all_snapshots.extend(filtered_snapshots)
+        
+        # Sắp xếp tất cả snapshots theo thời gian
+        all_snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
         
         # Định dạng timestamp trả về
-        for snap in filtered_snapshots:
+        for snap in all_snapshots:
             snap['timestamp'] = snap['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
             
-        return jsonify(filtered_snapshots)
+        return jsonify(all_snapshots)
     except Exception as e:
         logger.error(f"Lỗi khi lấy lịch sử từ DB: {e}")
         return jsonify({'error': str(e)}), 500
