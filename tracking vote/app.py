@@ -210,11 +210,29 @@ def get_vote_data():
 def get_history():
     session = Session()
     try:
-        # Bỏ phần giới hạn thời gian
-        query = session.query(VoteRecord)
+        interval = request.args.get('interval', '1d')
+        now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
+        interval_map = {
+            '10m': 10 * 60,
+            '30m': 30 * 60,
+            '1h': 60 * 60,
+            '5h': 5 * 60 * 60,
+            '1d': 24 * 60 * 60,
+            '3d': 3 * 24 * 60 * 60,
+            '7d': 7 * 24 * 60 * 60
+        }
+        step_map = {
+            '10m': 10,
+            '30m': 30,
+            '1h': 60,
+            '5h': 300
+        }
+        seconds = interval_map.get(interval, 24 * 60 * 60)
+        step_minutes = step_map.get(interval, None)
+        time_threshold = now - timedelta(seconds=seconds)
+        query = session.query(VoteRecord).filter(VoteRecord.timestamp >= time_threshold)
         query = query.order_by(desc(VoteRecord.timestamp))
         records = query.order_by(desc(VoteRecord.timestamp), VoteRecord.candidate_name).all()
-        
         # Lọc theo step
         filtered_snapshots = []
         last_snapshot_time = None
@@ -225,12 +243,11 @@ def get_history():
                 ts = pytz.utc.localize(ts).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
             else:
                 ts = ts.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
-            
-            snapshot_time = ts.replace(second=0, microsecond=0)
-            if not any(abs((snapshot_time - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
-                filtered_snapshots.append({'timestamp': snapshot_time, 'candidates': []})
-                last_snapshot_time = snapshot_time
-
+            if not last_snapshot_time or (step_minutes and (last_snapshot_time - ts).total_seconds() >= step_minutes * 60) or not step_minutes:
+                snapshot_time = ts.replace(second=0, microsecond=0)
+                if not any(abs((snapshot_time - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
+                    filtered_snapshots.append({'timestamp': snapshot_time, 'candidates': []})
+                    last_snapshot_time = snapshot_time
         # Gán candidates cho từng snapshot
         for snap in filtered_snapshots:
             snap['candidates'] = [
@@ -239,14 +256,11 @@ def get_history():
                 if (r.timestamp.tzinfo is None and pytz.utc.localize(r.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh')).replace(second=0, microsecond=0) == snap['timestamp'])
                 or (r.timestamp.tzinfo is not None and r.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh')).replace(second=0, microsecond=0) == snap['timestamp'])
             ]
-
         # Sắp xếp lại cho mốc mới nhất lên trên
         filtered_snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
-        
         # Định dạng timestamp trả về
         for snap in filtered_snapshots:
             snap['timestamp'] = snap['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
-            
         return jsonify(filtered_snapshots)
     except Exception as e:
         logger.error(f"Lỗi khi lấy lịch sử từ DB: {e}")
