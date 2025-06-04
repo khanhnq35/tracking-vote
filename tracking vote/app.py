@@ -331,7 +331,7 @@ def scheduled_fetch():
         fetch_vote_data()
 
 # Thêm job cập nhật mỗi 5 phút
-scheduler.add_job(func=scheduled_fetch, trigger="interval", minutes=5)
+scheduler.add_job(func=scheduled_fetch, trigger="interval", minutes=5, id='normal_update')
 
 # Thêm job cập nhật mỗi 1 phút trong khoảng thời gian đặc biệt
 scheduler.add_job(
@@ -339,7 +339,8 @@ scheduler.add_job(
     trigger="interval",
     minutes=1,
     start_date=datetime(2024, 6, 4, 21, 30, tzinfo=pytz.timezone('Asia/Ho_Chi_Minh')),
-    end_date=datetime(2024, 6, 4, 23, 5, tzinfo=pytz.timezone('Asia/Ho_Chi_Minh'))
+    end_date=datetime(2024, 6, 4, 23, 5, tzinfo=pytz.timezone('Asia/Ho_Chi_Minh')),
+    id='special_update'
 )
 
 scheduler.start()
