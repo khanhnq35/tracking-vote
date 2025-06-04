@@ -210,57 +210,40 @@ def get_vote_data():
 def get_history():
     session = Session()
     try:
-        interval = request.args.get('interval', '1d')
-        now = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
-        interval_map = {
-            '10m': 10 * 60,
-            '30m': 30 * 60,
-            '1h': 60 * 60,
-            '5h': 5 * 60 * 60,
-            '1d': 24 * 60 * 60,
-            '3d': 3 * 24 * 60 * 60,
-            '7d': 7 * 24 * 60 * 60
-        }
-        step_map = {
-            '10m': 10,
-            '30m': 30,
-            '1h': 60,
-            '5h': 300
-        }
-        seconds = interval_map.get(interval, 24 * 60 * 60)
-        step_minutes = step_map.get(interval, None)
-        time_threshold = now - timedelta(seconds=seconds)
-        query = session.query(VoteRecord).filter(VoteRecord.timestamp >= time_threshold)
-        query = query.order_by(desc(VoteRecord.timestamp))
-        records = query.order_by(desc(VoteRecord.timestamp), VoteRecord.candidate_name).all()
+        # Lấy dữ liệu và chuyển đổi timezone ngay từ đầu
+        records = session.query(VoteRecord).order_by(desc(VoteRecord.timestamp)).all()
+        
+        # Chuyển đổi timezone cho tất cả records
+        for record in records:
+            if record.timestamp.tzinfo is None:
+                record.timestamp = pytz.utc.localize(record.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+            else:
+                record.timestamp = record.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+
         # Lọc theo step
         filtered_snapshots = []
         last_snapshot_time = None
         for record in records:
-            ts = record.timestamp
-            # Luôn convert về Asia/Ho_Chi_Minh (GMT+7)
-            if ts.tzinfo is None:
-                ts = pytz.utc.localize(ts).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
-            else:
-                ts = ts.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
-            if not last_snapshot_time or (step_minutes and (last_snapshot_time - ts).total_seconds() >= step_minutes * 60) or not step_minutes:
-                snapshot_time = ts.replace(second=0, microsecond=0)
-                if not any(abs((snapshot_time - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
-                    filtered_snapshots.append({'timestamp': snapshot_time, 'candidates': []})
-                    last_snapshot_time = snapshot_time
+            ts = record.timestamp.replace(second=0, microsecond=0)
+            if not any(abs((ts - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
+                filtered_snapshots.append({'timestamp': ts, 'candidates': []})
+                last_snapshot_time = ts
+
         # Gán candidates cho từng snapshot
         for snap in filtered_snapshots:
             snap['candidates'] = [
                 {'name': r.candidate_name, 'percent': r.percent, 'real_percent': r.real_percent}
                 for r in records 
-                if (r.timestamp.tzinfo is None and pytz.utc.localize(r.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh')).replace(second=0, microsecond=0) == snap['timestamp'])
-                or (r.timestamp.tzinfo is not None and r.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh')).replace(second=0, microsecond=0) == snap['timestamp'])
+                if r.timestamp.replace(second=0, microsecond=0) == snap['timestamp']
             ]
+
         # Sắp xếp lại cho mốc mới nhất lên trên
         filtered_snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
+        
         # Định dạng timestamp trả về
         for snap in filtered_snapshots:
             snap['timestamp'] = snap['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+            
         return jsonify(filtered_snapshots)
     except Exception as e:
         logger.error(f"Lỗi khi lấy lịch sử từ DB: {e}")
@@ -309,11 +292,31 @@ def index():
 # Khởi tạo scheduler
 # Sử dụng timezone từ pytz, ví dụ múi giờ Việt Nam (Asia/Ho_Chi_Minh)
 scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Ho_Chi_Minh'))
-scheduler.add_job(func=fetch_vote_data, trigger="interval", minutes=1)
+
+def fetch_vote_data_with_cleanup():
+    try:
+        fetch_vote_data()
+        # Xóa dữ liệu cũ hơn 7 ngày để tránh quá tải database
+        session = Session()
+        try:
+            cutoff_date = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')) - timedelta(days=7)
+            session.query(VoteRecord).filter(VoteRecord.timestamp < cutoff_date).delete()
+            session.commit()
+            logger.info("Đã xóa dữ liệu cũ hơn 7 ngày")
+        except Exception as e:
+            logger.error(f"Lỗi khi xóa dữ liệu cũ: {e}")
+            session.rollback()
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Lỗi khi fetch và cleanup dữ liệu: {e}")
+
+# Thêm job cập nhật mỗi 1 phút
+scheduler.add_job(func=fetch_vote_data_with_cleanup, trigger="interval", minutes=1)
 scheduler.start()
 
-# Fetch data lần đầu khi ứng dụng được import (để có dữ liệu ngay từ đầu)
-fetch_vote_data() # Bỏ comment để có dữ liệu ngay khi khởi động
+# Fetch data lần đầu khi ứng dụng được import
+fetch_vote_data_with_cleanup()
 
 if __name__ == '__main__':
     try:
