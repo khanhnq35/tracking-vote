@@ -248,59 +248,35 @@ def get_vote_data():
 def get_history():
     session = Session()
     try:
-        # Lấy dữ liệu theo từng board và giới hạn số lượng records
-        boards = ["A", "B", "C"]
-        all_snapshots = []
-        
-        for board in boards:
-            # Lấy records cho từng board
-            records = session.query(VoteRecord).filter_by(board=board).order_by(desc(VoteRecord.timestamp)).all()
-            
-            # Chuyển đổi timezone và lọc theo step
-            filtered_snapshots = []
-            for record in records:
-                if record.timestamp.tzinfo is None:
-                    ts = pytz.utc.localize(record.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
-                else:
-                    ts = record.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
-                
-                ts = ts.replace(second=0, microsecond=0)
-                
-                # Kiểm tra xem đã có snapshot cho timestamp này chưa
-                if not any(abs((ts - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
-                    filtered_snapshots.append({
-                        'timestamp': ts,
-                        'candidates': [{
-                            'name': record.candidate_name,
-                            'percent': record.percent,
-                            'real_percent': record.real_percent
-                        }]
-                    })
-                else:
-                    # Thêm candidate vào snapshot gần nhất
-                    for snap in filtered_snapshots:
-                        if abs((ts - snap['timestamp']).total_seconds()) < 60:
-                            snap['candidates'].append({
-                                'name': record.candidate_name,
-                                'percent': record.percent,
-                                'real_percent': record.real_percent
-                            })
-                            break
-            
-            # Thêm board vào mỗi snapshot
-            for snap in filtered_snapshots:
-                snap['board'] = board
-            
-            all_snapshots.extend(filtered_snapshots)
-        
-        # Sắp xếp tất cả snapshots theo thời gian
-        all_snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
-        
-        # Định dạng timestamp trả về
-        for snap in all_snapshots:
-            snap['timestamp'] = snap['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
-            
-        return jsonify(all_snapshots)
+        records = session.query(VoteRecord).order_by(desc(VoteRecord.timestamp)).all()
+        # Gom các record theo timestamp (làm tròn về phút)
+        snapshot_dict = {}
+        for record in records:
+            # Chuyển timezone về Asia/Ho_Chi_Minh
+            if record.timestamp.tzinfo is None:
+                ts = pytz.utc.localize(record.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+            else:
+                ts = record.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+            ts = ts.replace(second=0, microsecond=0)
+            key = ts.strftime('%Y-%m-%d %H:%M:%S')
+            if key not in snapshot_dict:
+                snapshot_dict[key] = []
+            snapshot_dict[key].append({
+                'name': record.candidate_name,
+                'percent': record.percent,
+                'real_percent': record.real_percent,
+                'board': record.board
+            })
+        # Tạo danh sách snapshot, mỗi snapshot gồm timestamp và danh sách candidates
+        snapshots = []
+        for key, candidates in snapshot_dict.items():
+            snapshots.append({
+                'timestamp': key,
+                'candidates': candidates
+            })
+        # Sắp xếp snapshot theo thời gian giảm dần
+        snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
+        return jsonify(snapshots)
     except Exception as e:
         logger.error(f"Lỗi khi lấy lịch sử từ DB: {e}")
         return jsonify({'error': str(e)}), 500
