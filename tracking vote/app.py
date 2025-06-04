@@ -35,16 +35,7 @@ if not DATABASE_URL:
     logger.error("DATABASE_URL is not set.")
     raise ValueError("DATABASE_URL environment variable not set.")
 
-# Thêm các tham số kết nối để tăng độ ổn định
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,  # Recycle connections after 30 minutes
-    pool_pre_ping=True  # Verify connection before using
-)
-
+engine = create_engine(DATABASE_URL)
 Base = declarative_base()
 
 # Định nghĩa Model (Bảng trong Database)
@@ -78,18 +69,13 @@ class User(UserMixin, Base):
 # Tạo bảng trong database nếu chưa tồn tại
 Base.metadata.create_all(engine)
 
-# Tạo Session maker với các cấu hình phù hợp
-Session = sessionmaker(
-    bind=engine,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False
-)
+# Tạo Session maker
+Session = sessionmaker(bind=engine)
 
 # Flask-Login setup
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'
+login_manager.login_view = 'login' # Set the view function for the login page
 login_manager.login_message_category = 'info'
 login_manager.login_message = 'Vui lòng đăng nhập để truy cập đầy đủ lịch sử.'
 
@@ -124,8 +110,12 @@ create_default_users()
 # User loader function required by Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
+    # Load user from DB based on user_id
     session = Session()
     try:
+        # user_id ở đây là id (primary key), không phải username
+        # Flask-Login lưu trữ user.get_id() là string
+        # Cần chuyển về int nếu id là int
         user = session.query(User).get(int(user_id))
         return user
     except Exception as e:
@@ -189,33 +179,6 @@ def fetch_vote_data():
     finally:
         session.close()
 
-# Khởi tạo scheduler
-# Sử dụng timezone từ pytz, ví dụ múi giờ Việt Nam (Asia/Ho_Chi_Minh)
-scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Ho_Chi_Minh'))
-
-def fetch_vote_data_with_cleanup():
-    try:
-        fetch_vote_data()
-        # Xóa dữ liệu cũ hơn 7 ngày để tránh quá tải database
-        session = Session()
-        try:
-            cutoff_date = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')) - timedelta(days=7)
-            session.query(VoteRecord).filter(VoteRecord.timestamp < cutoff_date).delete()
-            session.commit()
-            logger.info("Đã xóa dữ liệu cũ hơn 7 ngày")
-        except Exception as e:
-            logger.error(f"Lỗi khi xóa dữ liệu cũ: {e}")
-            session.rollback()
-        finally:
-            session.close()
-    except Exception as e:
-        logger.error(f"Lỗi khi fetch và cleanup dữ liệu: {e}")
-
-# Tạm thời comment các dòng này để dừng việc fetch dữ liệu mới
-# scheduler.add_job(func=fetch_vote_data_with_cleanup, trigger="interval", minutes=1)
-# scheduler.start()
-# fetch_vote_data_with_cleanup()
-
 # API trả về dữ liệu vote hiện tại
 @app.route('/api/vote-data')
 def get_vote_data():
@@ -224,7 +187,6 @@ def get_vote_data():
         boards = ["A", "B", "C"]
         result = {}
         for board in boards:
-            # Lấy dữ liệu mới nhất từ database
             latest_timestamp = session.query(VoteRecord.timestamp).filter_by(board=board).order_by(desc(VoteRecord.timestamp)).limit(1).scalar()
             if not latest_timestamp:
                 result[board] = {'last_update': None, 'candidates': []}
@@ -248,35 +210,45 @@ def get_vote_data():
 def get_history():
     session = Session()
     try:
+        # Lấy dữ liệu và chuyển đổi timezone ngay từ đầu
         records = session.query(VoteRecord).order_by(desc(VoteRecord.timestamp)).all()
-        # Gom các record theo timestamp (làm tròn về phút)
-        snapshot_dict = {}
+        
+        # Chuyển đổi timezone cho tất cả records
         for record in records:
-            # Chuyển timezone về Asia/Ho_Chi_Minh
             if record.timestamp.tzinfo is None:
-                ts = pytz.utc.localize(record.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+                record.timestamp = pytz.utc.localize(record.timestamp).astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
             else:
-                ts = record.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
-            ts = ts.replace(second=0, microsecond=0)
-            key = ts.strftime('%Y-%m-%d %H:%M:%S')
-            if key not in snapshot_dict:
-                snapshot_dict[key] = []
-            snapshot_dict[key].append({
-                'name': record.candidate_name,
-                'percent': record.percent,
-                'real_percent': record.real_percent,
-                'board': record.board
-            })
-        # Tạo danh sách snapshot, mỗi snapshot gồm timestamp và danh sách candidates
-        snapshots = []
-        for key, candidates in snapshot_dict.items():
-            snapshots.append({
-                'timestamp': key,
-                'candidates': candidates
-            })
-        # Sắp xếp snapshot theo thời gian giảm dần
-        snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
-        return jsonify(snapshots)
+                record.timestamp = record.timestamp.astimezone(pytz.timezone('Asia/Ho_Chi_Minh'))
+
+        # Lọc theo step
+        filtered_snapshots = []
+        last_snapshot_time = None
+        for record in records:
+            ts = record.timestamp.replace(second=0, microsecond=0)
+            if not any(abs((ts - s['timestamp']).total_seconds()) < 60 for s in filtered_snapshots):
+                filtered_snapshots.append({'timestamp': ts, 'candidates': []})
+                last_snapshot_time = ts
+
+        # Gán candidates cho từng snapshot
+        for snap in filtered_snapshots:
+            snap['candidates'] = [
+                {'name': r.candidate_name, 'percent': r.percent, 'real_percent': r.real_percent}
+                for r in records 
+                if r.timestamp.replace(second=0, microsecond=0) == snap['timestamp']
+            ]
+
+        # Sắp xếp lại cho mốc mới nhất lên trên
+        filtered_snapshots.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        # Định dạng timestamp trả về
+        for snap in filtered_snapshots:
+            snap['timestamp'] = snap['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+
+        # Ẩn 2 mốc timestamp gần nhất
+        if len(filtered_snapshots) > 2:
+            filtered_snapshots = filtered_snapshots[2:]
+
+        return jsonify(filtered_snapshots)
     except Exception as e:
         logger.error(f"Lỗi khi lấy lịch sử từ DB: {e}")
         return jsonify({'error': str(e)}), 500
@@ -287,22 +259,24 @@ def get_history():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
+        return redirect(url_for('index')) # Redirect nếu đã đăng nhập
 
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         session = Session()
-        try:
-            user = session.query(User).filter_by(username=username).first()
-            if user and user.check_password(password):
-                login_user(user)
-                return redirect(url_for('index'))
-        except Exception as e:
-            logger.error(f"Lỗi khi đăng nhập: {e}")
-        finally:
-            session.close()
+        user = session.query(User).filter_by(username=username).first()
+        session.close()
 
+        if user and user.check_password(password):
+            login_user(user) # Đăng nhập người dùng
+            # Có thể thêm flash message thông báo đăng nhập thành công
+            return redirect(url_for('index')) # Chuyển hướng đến trang chính sau khi đăng nhập
+        else:
+            # Có thể thêm flash message thông báo đăng nhập thất bại
+            pass # Xử lý đăng nhập thất bại (ví dụ: hiển thị lại form với thông báo lỗi)
+
+    # Render form đăng nhập (sẽ cần tạo file templates/login.html)
     return render_template('login.html')
 
 # Route đăng xuất
@@ -318,6 +292,35 @@ def logout():
 def index():
     # Truyền trạng thái đăng nhập ra frontend
     return render_template('index.html', is_authenticated=current_user.is_authenticated)
+
+# Khởi tạo scheduler
+# Sử dụng timezone từ pytz, ví dụ múi giờ Việt Nam (Asia/Ho_Chi_Minh)
+scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Ho_Chi_Minh'))
+
+def fetch_vote_data_with_cleanup():
+    try:
+        fetch_vote_data()
+        # Xóa dữ liệu cũ hơn 7 ngày để tránh quá tải database
+        session = Session()
+        try:
+            cutoff_date = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')) - timedelta(days=7)
+            session.query(VoteRecord).filter(VoteRecord.timestamp < cutoff_date).delete()
+            session.commit()
+            logger.info("Đã xóa dữ liệu cũ hơn 7 ngày")
+        except Exception as e:
+            logger.error(f"Lỗi khi xóa dữ liệu cũ: {e}")
+            session.rollback()
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Lỗi khi fetch và cleanup dữ liệu: {e}")
+
+# Thêm job cập nhật mỗi 1 năm
+scheduler.add_job(func=fetch_vote_data_with_cleanup, trigger="interval", weeks=52)
+scheduler.start()
+
+# Fetch data lần đầu khi ứng dụng được import (có thể comment nếu không muốn fetch lần đầu)
+# fetch_vote_data_with_cleanup()
 
 if __name__ == '__main__':
     try:
