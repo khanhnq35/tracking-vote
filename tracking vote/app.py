@@ -35,7 +35,16 @@ if not DATABASE_URL:
     logger.error("DATABASE_URL is not set.")
     raise ValueError("DATABASE_URL environment variable not set.")
 
-engine = create_engine(DATABASE_URL)
+# Thêm các tham số kết nối để tăng độ ổn định
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,  # Recycle connections after 30 minutes
+    pool_pre_ping=True  # Verify connection before using
+)
+
 Base = declarative_base()
 
 # Định nghĩa Model (Bảng trong Database)
@@ -69,13 +78,18 @@ class User(UserMixin, Base):
 # Tạo bảng trong database nếu chưa tồn tại
 Base.metadata.create_all(engine)
 
-# Tạo Session maker
-Session = sessionmaker(bind=engine)
+# Tạo Session maker với các cấu hình phù hợp
+Session = sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False
+)
 
 # Flask-Login setup
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login' # Set the view function for the login page
+login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
 login_manager.login_message = 'Vui lòng đăng nhập để truy cập đầy đủ lịch sử.'
 
@@ -110,12 +124,8 @@ create_default_users()
 # User loader function required by Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
-    # Load user from DB based on user_id
     session = Session()
     try:
-        # user_id ở đây là id (primary key), không phải username
-        # Flask-Login lưu trữ user.get_id() là string
-        # Cần chuyển về int nếu id là int
         user = session.query(User).get(int(user_id))
         return user
     except Exception as e:
@@ -255,24 +265,22 @@ def get_history():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('index')) # Redirect nếu đã đăng nhập
+        return redirect(url_for('index'))
 
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         session = Session()
-        user = session.query(User).filter_by(username=username).first()
-        session.close()
+        try:
+            user = session.query(User).filter_by(username=username).first()
+            if user and user.check_password(password):
+                login_user(user)
+                return redirect(url_for('index'))
+        except Exception as e:
+            logger.error(f"Lỗi khi đăng nhập: {e}")
+        finally:
+            session.close()
 
-        if user and user.check_password(password):
-            login_user(user) # Đăng nhập người dùng
-            # Có thể thêm flash message thông báo đăng nhập thành công
-            return redirect(url_for('index')) # Chuyển hướng đến trang chính sau khi đăng nhập
-        else:
-            # Có thể thêm flash message thông báo đăng nhập thất bại
-            pass # Xử lý đăng nhập thất bại (ví dụ: hiển thị lại form với thông báo lỗi)
-
-    # Render form đăng nhập (sẽ cần tạo file templates/login.html)
     return render_template('login.html')
 
 # Route đăng xuất
