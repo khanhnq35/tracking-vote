@@ -189,6 +189,33 @@ def fetch_vote_data():
     finally:
         session.close()
 
+# Khởi tạo scheduler
+# Sử dụng timezone từ pytz, ví dụ múi giờ Việt Nam (Asia/Ho_Chi_Minh)
+scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Ho_Chi_Minh'))
+
+def fetch_vote_data_with_cleanup():
+    try:
+        fetch_vote_data()
+        # Xóa dữ liệu cũ hơn 7 ngày để tránh quá tải database
+        session = Session()
+        try:
+            cutoff_date = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')) - timedelta(days=7)
+            session.query(VoteRecord).filter(VoteRecord.timestamp < cutoff_date).delete()
+            session.commit()
+            logger.info("Đã xóa dữ liệu cũ hơn 7 ngày")
+        except Exception as e:
+            logger.error(f"Lỗi khi xóa dữ liệu cũ: {e}")
+            session.rollback()
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Lỗi khi fetch và cleanup dữ liệu: {e}")
+
+# Tạm thời comment các dòng này để dừng việc fetch dữ liệu mới
+# scheduler.add_job(func=fetch_vote_data_with_cleanup, trigger="interval", minutes=1)
+# scheduler.start()
+# fetch_vote_data_with_cleanup()
+
 # API trả về dữ liệu vote hiện tại
 @app.route('/api/vote-data')
 def get_vote_data():
@@ -197,6 +224,7 @@ def get_vote_data():
         boards = ["A", "B", "C"]
         result = {}
         for board in boards:
+            # Lấy dữ liệu mới nhất từ database
             latest_timestamp = session.query(VoteRecord.timestamp).filter_by(board=board).order_by(desc(VoteRecord.timestamp)).limit(1).scalar()
             if not latest_timestamp:
                 result[board] = {'last_update': None, 'candidates': []}
@@ -296,33 +324,6 @@ def logout():
 def index():
     # Truyền trạng thái đăng nhập ra frontend
     return render_template('index.html', is_authenticated=current_user.is_authenticated)
-
-# Khởi tạo scheduler
-# Sử dụng timezone từ pytz, ví dụ múi giờ Việt Nam (Asia/Ho_Chi_Minh)
-scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Ho_Chi_Minh'))
-
-def fetch_vote_data_with_cleanup():
-    try:
-        fetch_vote_data()
-        # Xóa dữ liệu cũ hơn 7 ngày để tránh quá tải database
-        session = Session()
-        try:
-            cutoff_date = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh')) - timedelta(days=7)
-            session.query(VoteRecord).filter(VoteRecord.timestamp < cutoff_date).delete()
-            session.commit()
-            logger.info("Đã xóa dữ liệu cũ hơn 7 ngày")
-        except Exception as e:
-            logger.error(f"Lỗi khi xóa dữ liệu cũ: {e}")
-            session.rollback()
-        finally:
-            session.close()
-    except Exception as e:
-        logger.error(f"Lỗi khi fetch và cleanup dữ liệu: {e}")
-
-# Tạm thời comment các dòng này để dừng việc fetch dữ liệu mới
-# scheduler.add_job(func=fetch_vote_data_with_cleanup, trigger="interval", minutes=1)
-# scheduler.start()
-# fetch_vote_data_with_cleanup()
 
 if __name__ == '__main__':
     try:
